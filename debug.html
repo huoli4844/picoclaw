@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PicoClaw Debug</title>
+</head>
+<body>
+    <h1>PicoClaw Connection Debug</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.innerHTML += message + '<br>';
+            console.log(message);
+        }
+        
+        async function testConnection() {
+            log('Testing connection to PicoClaw...');
+            
+            try {
+                // Test basic health
+                const healthResponse = await fetch('http://localhost:18790/health');
+                const healthData = await healthResponse.json();
+                log('Health check: ' + JSON.stringify(healthData));
+                
+                // Test connect API
+                const connectResponse = await fetch('http://localhost:18790/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: 'test-connect',
+                        method: 'connect',
+                        params: {}
+                    })
+                });
+                const connectData = await connectResponse.json();
+                log('Connect response: ' + JSON.stringify(connectData));
+                
+                // Test chat send
+                const chatResponse = await fetch('http://localhost:18790/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: 'test-chat',
+                        method: 'chat.send',
+                        params: {
+                            sessionKey: 'debug-test',
+                            message: 'Hello from debug page',
+                            deliver: true,
+                            idempotencyKey: 'debug-1'
+                        }
+                    })
+                });
+                const chatData = await chatResponse.json();
+                log('Chat send response: ' + JSON.stringify(chatData));
+                
+                // Test events poll
+                const pollResponse = await fetch('http://localhost:18790/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: 'test-poll',
+                        method: 'events.poll',
+                        params: { lastSeq: 0 }
+                    })
+                });
+                const pollData = await pollResponse.json();
+                log('Events poll response: ' + JSON.stringify(pollData));
+                
+            } catch (error) {
+                log('Error: ' + error.message);
+            }
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>

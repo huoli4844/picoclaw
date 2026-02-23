@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connection Test</title>
+</head>
+<body>
+    <h1>Frontend Connection Test</h1>
+    <div id="status">Loading...</div>
+    <div>
+        <button id="connectBtn">Connect to PicoClaw</button>
+        <button id="sendBtn" disabled>Send Message</button>
+    </div>
+    <div id="messages"></div>
+    
+    <script>
+        const status = document.getElementById('status');
+        const messages = document.getElementById('messages');
+        const connectBtn = document.getElementById('connectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        let connected = false;
+        let client = null;
+        let messageId = 0;
+        let lastSeq = 0;
+        
+        // PicoClaw适配器实现
+        class PicoClawClient {
+            constructor(gatewayUrl) {
+                this.gatewayUrl = gatewayUrl;
+                this.connected = false;
+            }
+            
+            async start() {
+                const httpUrl = this.gatewayUrl.replace(/^ws:\/\//, "http://").replace(/^wss:\/\//, "https://").replace(/\/gateway$/, "") + "/api";
+                
+                try {
+                    const response = await fetch(httpUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: String(++messageId),
+                            method: 'connect',
+                            params: {}
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.ok) {
+                        this.connected = true;
+                        connected = true;
+                        status.textContent = '✅ Connected to PicoClaw';
+                        sendBtn.disabled = false;
+                        log('Connected successfully');
+                        
+                        // Start polling for events
+                        this.startPolling();
+                        return result.payload;
+                    } else {
+                        throw new Error(result.error?.message || 'Connection failed');
+                    }
+                } catch (error) {
+                    status.textContent = '❌ Connection failed: ' + error.message;
+                    log('Connection error: ' + error.message);
+                    throw error;
+                }
+            }
+            
+            async startPolling() {
+                const poll = async () => {
+                    if (!this.connected) return;
+                    
+                    const httpUrl = this.gatewayUrl.replace(/^ws:\/\//, "http://").replace(/^wss:\/\//, "https://").replace(/\/gateway$/, "") + "/api";
+                    
+                    try {
+                        const response = await fetch(httpUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                id: String(++messageId),
+                                method: 'events.poll',
+                                params: { lastSeq }
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.ok && result.payload && result.payload.events) {
+                            for (const event of result.payload.events) {
+                                if (event.seq > lastSeq) {
+                                    lastSeq = event.seq;
+                                }
+                                if (event.event === 'chat' && event.payload && event.payload.message) {
+                                    log('Received chat message: ' + event.payload.message.content[0].text);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        log('Poll error: ' + error.message);
+                    }
+                    
+                    setTimeout(poll, 1000);
+                };
+                
+                poll();
+            }
+            
+            async request(method, params) {
+                if (!this.connected) {
+                    throw new Error('Not connected');
+                }
+                
+                const httpUrl = this.gatewayUrl.replace(/^ws:\/\//, "http://").replace(/^wss:\/\//, "https://").replace(/\/gateway$/, "") + "/api";
+                
+                const response = await fetch(httpUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: String(++messageId),
+                        method,
+                        params
+                    })
+                });
+                
+                return await response.json();
+            }
+        }
+        
+        function log(message) {
+            messages.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+        
+        connectBtn.addEventListener('click', async () => {
+            try {
+                client = new PicoClawClient('ws://localhost:18790/gateway');
+                await client.start();
+                connectBtn.disabled = true;
+            } catch (error) {
+                log('Failed to connect: ' + error.message);
+            }
+        });
+        
+        sendBtn.addEventListener('click', async () => {
+            if (!client || !connected) {
+                log('Not connected');
+                return;
+            }
+            
+            try {
+                log('Sending message...');
+                const result = await client.request('chat.send', {
+                    sessionKey: 'test-session',
+                    message: 'Hello from test page',
+                    deliver: true,
+                    idempotencyKey: 'test-' + Date.now()
+                });
+                
+                if (result.ok) {
+                    log('Message sent successfully');
+                } else {
+                    log('Send failed: ' + JSON.stringify(result.error));
+                }
+            } catch (error) {
+                log('Send error: ' + error.message);
+            }
+        });
+        
+        // Auto-connect
+        setTimeout(() => {
+            log('Auto-connecting...');
+            connectBtn.click();
+        }, 1000);
+    </script>
+</body>
+</html>

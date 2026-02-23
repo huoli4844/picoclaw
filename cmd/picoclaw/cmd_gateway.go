@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/agent"
+	"github.com/sipeed/picoclaw/pkg/api"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/cron"
 	"github.com/sipeed/picoclaw/pkg/devices"
-	"github.com/sipeed/picoclaw/pkg/health"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -196,12 +196,14 @@ func gatewayCmd() {
 		fmt.Printf("Error starting channels: %v\n", err)
 	}
 
-	healthServer := health.NewServer(cfg.Gateway.Host, cfg.Gateway.Port)
+	// Start API Server with OpenClaw-compatible endpoints
+	apiServer := api.NewServer(cfg.Gateway.Host, cfg.Gateway.Port, agentLoop, msgBus, cfg)
 	go func() {
-		if err := healthServer.Start(); err != nil && err != http.ErrServerClosed {
-			logger.ErrorCF("health", "Health server error", map[string]any{"error": err.Error()})
+		if err := apiServer.Start(); err != nil && err != http.ErrServerClosed {
+			logger.ErrorCF("api", "API server error", map[string]any{"error": err.Error()})
 		}
 	}()
+	fmt.Printf("✓ API Server available at http://%s:%d (WebSocket: /gateway, REST: /api)\n", cfg.Gateway.Host, cfg.Gateway.Port)
 	fmt.Printf("✓ Health endpoints available at http://%s:%d/health and /ready\n", cfg.Gateway.Host, cfg.Gateway.Port)
 
 	go agentLoop.Run(ctx)
@@ -212,7 +214,7 @@ func gatewayCmd() {
 
 	fmt.Println("\nShutting down...")
 	cancel()
-	healthServer.Stop(context.Background())
+	apiServer.Stop(context.Background())
 	deviceService.Stop()
 	heartbeatService.Stop()
 	cronService.Stop()

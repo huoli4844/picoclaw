@@ -12,6 +12,8 @@ build/
 /picoclaw-test
 cmd/picoclaw/workspace
 
+/ui/node_modules
+
 # Picoclaw specific
 
 # PicoClaw
