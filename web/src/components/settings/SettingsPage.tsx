@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Settings as SettingsIcon, Palette, Bell, Database, Shield } from 'lucide-react'
+import { ArrowLeft, Settings as SettingsIcon, Palette, Bell, Database, Shield, Bot, Check } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { ModelSettings } from './ModelSettings'
 
@@ -7,9 +7,11 @@ interface SettingsPageProps {
   onBack: () => void
   models: any[]
   onModelsChange: (models: any[]) => void
+  selectedModel: string
+  onSelectedModelChange: (model: string) => void
 }
 
-export function SettingsPage({ onBack, models, onModelsChange }: SettingsPageProps) {
+export function SettingsPage({ onBack, models, onModelsChange, selectedModel, onSelectedModelChange }: SettingsPageProps) {
   const { theme, setTheme } = useTheme()
   const [activeSection, setActiveSection] = useState('general')
 
@@ -61,6 +63,53 @@ export function SettingsPage({ onBack, models, onModelsChange }: SettingsPagePro
       default:
         return (
           <div className="space-y-6">
+            {/* 当前使用模型显示 */}
+            <div>
+              <h3 className="text-lg font-medium mb-4">当前模型</h3>
+              <div className="bg-muted/50 border rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                    <Bot className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-lg">
+                      {selectedModel || '未选择模型'}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {selectedModel ? '当前正在使用此模型进行对话' : '请选择一个模型开始对话'}
+                    </div>
+                  </div>
+                  {selectedModel && (
+                    <div className="w-6 h-6 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                      <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    </div>
+                  )}
+                </div>
+                
+                {/* 模型统计信息 */}
+                {selectedModel && (
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-background rounded p-3">
+                      <div className="text-sm text-muted-foreground">可用模型</div>
+                      <div className="text-xl font-semibold">{models.length}</div>
+                    </div>
+                    <div className="bg-background rounded p-3">
+                      <div className="text-sm text-muted-foreground">模型类型</div>
+                      <div className="text-sm font-medium">
+                        {models.find(m => m.model_name === selectedModel)?.model?.split('/')[0] || '未知'}
+                      </div>
+                    </div>
+                    <div className="bg-background rounded p-3">
+                      <div className="text-sm text-muted-foreground">状态</div>
+                      <div className="text-sm font-medium text-green-600 dark:text-green-400">
+                        活跃
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
             <div>
               <h3 className="text-lg font-medium mb-4">模型配置</h3>
               <ModelSettings
@@ -68,6 +117,8 @@ export function SettingsPage({ onBack, models, onModelsChange }: SettingsPagePro
                 onClose={onBack}
                 models={models}
                 onModelsChange={onModelsChange}
+                selectedModel={selectedModel}
+                onSelectedModelChange={onSelectedModelChange}
               />
             </div>
           </div>

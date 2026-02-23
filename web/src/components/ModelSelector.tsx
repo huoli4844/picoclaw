@@ -1,5 +1,4 @@
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Button } from './ui/button'
 import { Settings, Package } from 'lucide-react'
 import { Model } from '@/types'
@@ -7,7 +6,6 @@ import { Model } from '@/types'
 interface ModelSelectorProps {
   models: Model[]
   selectedModel: string
-  onModelChange: (model: string) => void
   onOpenSettings: () => void
   onOpenSkills: () => void
 }
@@ -15,27 +13,28 @@ interface ModelSelectorProps {
 export function ModelSelector({ 
   models, 
   selectedModel, 
-  onModelChange, 
   onOpenSettings,
   onOpenSkills
 }: ModelSelectorProps) {
+  const currentModel = models.find(m => m.model_name === selectedModel)
+  
   return (
     <div className="border-b bg-background p-4">
       <div className="flex items-center justify-between max-w-4xl mx-auto">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">模型:</span>
-          <Select value={selectedModel} onValueChange={onModelChange}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="选择模型" />
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((model) => (
-                <SelectItem key={model.model_name} value={model.model_name}>
-                  {model.model_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium">当前模型:</span>
+          <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-md">
+            <div className="flex flex-col">
+              <div className="font-medium">
+                {currentModel?.model_name || selectedModel || '未配置'}
+              </div>
+              {currentModel?.model && (
+                <div className="text-xs text-muted-foreground">
+                  {currentModel.model}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onOpenSkills}>

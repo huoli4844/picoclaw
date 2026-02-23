@@ -40,8 +40,12 @@ function App() {
           setModels(config.model_list || [])
           
           if (config.model_list && config.model_list.length > 0) {
-            const defaultModel = config.agents?.defaults?.model || config.model_list[0].model_name
-            setSelectedModel(defaultModel)
+            const defaultModelFromConfig = config.agents?.defaults?.model
+            // 尝试匹配 model 字段，如果找不到则使用 model_name
+            const matchingModel = config.model_list.find(m => 
+              m.model === defaultModelFromConfig || m.model_name === defaultModelFromConfig
+            )
+            setSelectedModel(matchingModel ? matchingModel.model_name : config.model_list[0].model_name)
           }
         }
         setIsInitialized(true)
@@ -138,6 +142,12 @@ function App() {
   }
 
   const handleModelsChange = async (newModels: Model[]) => {
+    console.log('handleModelsChange called with:', newModels.map(m => ({
+      name: m.model_name,
+      hasApiKey: !!m.api_key,
+      apiKeyLength: m.api_key?.length || 0
+    })))
+    
     setModels(newModels)
     
     if (newModels.length === 0) {
@@ -145,16 +155,20 @@ function App() {
       return
     }
 
-    // 更新配置
+    // 更新配置，保持当前的默认模型
     try {
-      await updateConfig({
+      const configUpdate = {
         model_list: newModels,
         agents: {
           defaults: {
-            model: newModels[0].model_name
+            model: selectedModel // 使用当前选中的模型作为默认模型
           }
         }
-      })
+      }
+      console.log('Updating config with:', configUpdate)
+      
+      await updateConfig(configUpdate)
+      console.log('Config updated successfully')
     } catch (error) {
       console.error('Failed to update models:', error)
     }
@@ -162,6 +176,23 @@ function App() {
     // 如果当前选择的模型不在新列表中，选择第一个
     if (!newModels.find(m => m.model_name === selectedModel)) {
       setSelectedModel(newModels[0].model_name)
+    }
+  }
+
+  const handleSelectedModelChange = async (newDefaultModel: string) => {
+    setSelectedModel(newDefaultModel)
+    
+    // 更新配置文件中的默认模型
+    try {
+      await updateConfig({
+        agents: {
+          defaults: {
+            model: newDefaultModel
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Failed to update default model:', error)
     }
   }
 
@@ -196,6 +227,8 @@ function App() {
           onBack={() => setCurrentView('chat')}
           models={models}
           onModelsChange={handleModelsChange}
+          selectedModel={selectedModel}
+          onSelectedModelChange={handleSelectedModelChange}
         />
       </ThemeProvider>
     )
@@ -217,7 +250,6 @@ function App() {
         <Header
           selectedModel={selectedModel}
           models={models}
-          onModelChange={setSelectedModel}
           onOpenSettings={() => setCurrentView('settings')}
           onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         />
