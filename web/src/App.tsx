@@ -250,7 +250,6 @@ function App() {
         <Header
           selectedModel={selectedModel}
           models={models}
-          onOpenSettings={() => setCurrentView('settings')}
           onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 

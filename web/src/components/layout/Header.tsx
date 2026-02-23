@@ -6,11 +6,10 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 interface HeaderProps {
   selectedModel: string
   models: any[]
-  onOpenSettings: () => void
   onSidebarToggle: () => void
 }
 
-export function Header({ selectedModel, models, onOpenSettings, onSidebarToggle }: HeaderProps) {
+export function Header({ selectedModel, models, onSidebarToggle }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center px-4 lg:px-6">
@@ -32,8 +31,6 @@ export function Header({ selectedModel, models, onOpenSettings, onSidebarToggle 
             <ModelSelector
               models={models}
               selectedModel={selectedModel}
-              onOpenSettings={onOpenSettings}
-              onOpenSkills={() => {}} // 这将在主App中处理
             />
             <ThemeToggle />
           </div>
