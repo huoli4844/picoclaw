@@ -4,6 +4,7 @@ import { formatMessageTime } from '@/lib/utils'
 import { Message } from '@/types'
 import { Bot, User } from 'lucide-react'
 import { ThoughtProcess } from './ThoughtProcess'
+import { MarkdownRenderer } from './ui/markdown-renderer'
 
 interface ChatMessageProps {
   message: Message
@@ -24,7 +25,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </div>
         <div className="chat-content user">
           <div className="flex flex-col">
-            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</div>
             <div className="flex items-center gap-2 text-xs mt-2 text-primary-foreground/70">
               <span>{formatMessageTime(message.timestamp)}</span>
               {message.model && <span>• {message.model}</span>}
@@ -46,7 +47,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
       <div className="chat-content assistant">
         <div className="flex flex-col space-y-4">
-          <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+          <MarkdownRenderer 
+            content={message.content} 
+            className="text-sm leading-relaxed"
+          />
           
           {/* 显示思考过程 */}
           {message.thoughts && message.thoughts.length > 0 && (

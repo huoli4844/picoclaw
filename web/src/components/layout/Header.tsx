@@ -30,7 +30,6 @@ export function Header({ selectedModel, models, onModelChange, onOpenSettings, o
           </div>
 
           <div className="flex items-center gap-3">
-            <ThemeToggle />
             <ModelSelector
               models={models}
               selectedModel={selectedModel}
@@ -38,6 +37,7 @@ export function Header({ selectedModel, models, onModelChange, onOpenSettings, o
               onOpenSettings={onOpenSettings}
               onOpenSkills={() => {}} // 这将在主App中处理
             />
+            <ThemeToggle />
           </div>
         </div>
       </div>

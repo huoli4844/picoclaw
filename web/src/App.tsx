@@ -224,7 +224,7 @@ function App() {
 
         {/* Messages */}
         <ScrollArea className="flex-1">
-          <div className="chat-messages max-w-4xl mx-auto">
+          <div className="chat-messages w-full h-full px-4">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <div className="text-center">
@@ -258,7 +258,7 @@ function App() {
 
         {/* Input */}
         <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
-          <div className="max-w-4xl mx-auto">
+          <div className="w-full px-4">
             <ChatInput
               onSendMessage={handleSendMessage}
               isLoading={isLoading}

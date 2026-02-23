@@ -111,7 +111,19 @@
 }
 
 .chat-message {
-  @apply flex gap-4 max-w-4xl;
+  @apply flex gap-4 w-full;
+}
+
+.chat-content {
+  @apply rounded-xl p-4 shadow-sm transition-all duration-200 group-hover:shadow-md;
+}
+
+.chat-content.user {
+  @apply bg-gradient-to-br from-primary to-primary/90 text-primary-foreground ml-2 border border-primary/20 max-w-[80%];
+}
+
+.chat-content.assistant {
+  @apply bg-gradient-to-br from-muted to-muted/80 border border-border max-w-[80%];
 }
 
 .chat-message.user {
@@ -134,17 +146,7 @@
   @apply bg-gradient-to-br from-secondary to-secondary/80 text-secondary-foreground;
 }
 
-.chat-content {
-  @apply rounded-xl p-4 max-w-[85%] shadow-sm transition-all duration-200 group-hover:shadow-md;
-}
 
-.chat-content.user {
-  @apply bg-gradient-to-br from-primary to-primary/90 text-primary-foreground ml-2 border border-primary/20;
-}
-
-.chat-content.assistant {
-  @apply bg-gradient-to-br from-muted to-muted/80 border border-border;
-}
 
 .typing-indicator {
   @apply flex gap-1 p-4;

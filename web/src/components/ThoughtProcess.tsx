@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, Brain, Wrench, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
+import { MarkdownRenderer } from './ui/markdown-renderer'
 import { Thought } from '@/types'
 
 interface ThoughtProcessProps {
@@ -107,7 +108,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
                       )}
                     </div>
                     <div className="text-sm break-words">
-                      {thought.content}
+                      <MarkdownRenderer content={thought.content} />
                     </div>
                     {thought.args && (
                       <details className="mt-2">

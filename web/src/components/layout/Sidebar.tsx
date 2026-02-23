@@ -1,6 +1,5 @@
 
 import { Brain, Settings, Package, MessageSquare, Github } from 'lucide-react'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
 
 interface SidebarProps {
   currentView: 'chat' | 'skills' | 'settings'
@@ -48,7 +47,6 @@ export function Sidebar({ currentView, onViewChange, isSidebarOpen, onSidebarTog
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ThemeToggle />
               <button
                 onClick={onSidebarToggle}
                 className="lg:hidden p-2 rounded-md hover:bg-accent"
@@ -104,7 +102,6 @@ export function Sidebar({ currentView, onViewChange, isSidebarOpen, onSidebarTog
                 <Github className="w-4 h-4" />
                 <span className="hidden sm:inline">GitHub</span>
               </a>
-              <ThemeToggle />
             </div>
             
             <div className="mt-3 text-xs text-muted-foreground">
