@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback } from './ui/avatar'
 import { formatMessageTime } from '@/lib/utils'
 import { Message } from '@/types'
 import { Bot, User } from 'lucide-react'
+import { ThoughtProcess } from './ThoughtProcess'
 
 interface ChatMessageProps {
   message: Message
@@ -21,9 +22,15 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </Avatar>
       </div>
       <div className="chat-content">
-        <div className="flex flex-col">
+        <div className="flex flex-col space-y-3">
           <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+          
+          {/* 显示思考过程 */}
+          {!isUser && message.thoughts && message.thoughts.length > 0 && (
+            <ThoughtProcess thoughts={message.thoughts} />
+          )}
+          
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{formatMessageTime(message.timestamp)}</span>
             {message.model && <span>• {message.model}</span>}
           </div>

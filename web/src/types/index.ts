@@ -4,6 +4,7 @@ export interface Message {
   role: 'user' | 'assistant';
   timestamp: Date;
   model?: string;
+  thoughts?: Thought[];
 }
 
 export interface Model {
@@ -49,6 +50,17 @@ export interface ChatResponse {
   message: string;
   model: string;
   timestamp: Date;
+  thoughts?: Thought[];
+}
+
+export interface Thought {
+  type: 'tool_call' | 'tool_result' | 'thinking';
+  timestamp: Date;
+  content: string;
+  tool_name?: string;
+  args?: string;
+  result?: string;
+  duration?: number;
 }
 
 export interface Skill {

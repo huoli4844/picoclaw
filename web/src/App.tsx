@@ -7,12 +7,11 @@ import { ModelSettings } from './components/settings/ModelSettings'
 import { SkillsPage } from './components/skills/SkillsPage'
 import { ScrollArea } from './components/ui/scroll-area'
 import { useApi } from './hooks/useApi'
-import { Message, Model } from './types'
+import { Message, Model, ChatResponse } from './types'
 import { Brain } from 'lucide-react'
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
-  const [isLoading, setIsLoading] = useState(false)
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -20,7 +19,7 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { sendChatMessage, getConfig, updateConfig } = useApi()
+  const { sendStreamingChatMessage, getConfig, updateConfig, isLoading } = useApi()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -72,45 +71,67 @@ function App() {
     }
 
     setMessages(prev => [...prev, userMessage])
-    setIsLoading(true)
+
+    // 创建一个空的助手消息，用于实时更新思考过程和最终内容
+    const assistantMessageId = (Date.now() + 1).toString()
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      content: '',
+      role: 'assistant',
+      timestamp: new Date(),
+      model: selectedModel,
+      thoughts: []
+    }
+    
+    setMessages(prev => [...prev, assistantMessage])
 
     try {
-      const response = await sendChatMessage({
-        message: content,
-        model: selectedModel,
-        stream: false
-      })
-
-      if (response.success && response.data) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: response.data.message,
-          role: 'assistant',
-          timestamp: new Date(response.data.timestamp),
-          model: response.data.model
+      sendStreamingChatMessage(
+        {
+          message: content,
+          model: selectedModel,
+          stream: true
+        },
+        // onThought: 接收到思考过程时的回调
+        (thought: any) => {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, thoughts: [...(msg.thoughts || []), thought] }
+                : msg
+            )
+          )
+        },
+        // onComplete: 接收到最终回复时的回调
+        (response: ChatResponse) => {
+          console.log('App.tsx: Received completion:', response)
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: response.message, timestamp: response.timestamp }
+                : msg
+            )
+          )
+        },
+        // onError: 出错时的回调
+        (error: string) => {
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: `错误: ${error}` }
+                : msg
+            )
+          )
         }
-        setMessages(prev => [...prev, assistantMessage])
-      } else {
-        const errorMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: `错误: ${response.error || '未知错误'}`,
-          role: 'assistant',
-          timestamp: new Date(),
-          model: selectedModel
-        }
-        setMessages(prev => [...prev, errorMessage])
-      }
+      )
     } catch (error) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `网络错误: ${error instanceof Error ? error.message : '未知错误'}`,
-        role: 'assistant',
-        timestamp: new Date(),
-        model: selectedModel
-      }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === assistantMessageId 
+            ? { ...msg, content: `网络错误: ${error instanceof Error ? error.message : '未知错误'}` }
+            : msg
+        )
+      )
     }
   }
 

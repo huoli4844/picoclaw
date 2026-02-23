@@ -67,6 +67,102 @@ export function useApi() {
     }
   }, [request])
 
+  const sendStreamingChatMessage = useCallback(
+    (
+      chatRequest: ChatRequest,
+      onThought: (thought: any) => void,
+      onComplete: (response: ChatResponse) => void,
+      onError: (error: string) => void
+    ) => {
+      setIsLoading(true)
+      
+      const streamingRequest = { ...chatRequest, stream: true }
+      
+      fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(streamingRequest),
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('Response body is not readable')
+        }
+        
+        const decoder = new TextDecoder()
+        let buffer = ''
+        
+        const readStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) {
+                // 流结束，确保loading状态被重置
+                setIsLoading(false)
+                break
+              }
+              
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split('\n')
+              buffer = lines.pop() || ''
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6))
+                    
+                    switch (data.type) {
+                      case 'thought':
+                        onThought(data.thought)
+                        break
+                      case 'complete':
+                        console.log('Received complete event:', data)
+                        onComplete({
+                          message: data.message,
+                          model: data.model,
+                          timestamp: new Date(data.timestamp),
+                          thoughts: [] // 思考过程已经通过 onThought 实时推送
+                        })
+                        setIsLoading(false)
+                        return
+                      default:
+                        console.warn('Unknown SSE event type:', data.type)
+                    }
+                  } catch (parseError) {
+                    console.error('Error parsing SSE message:', parseError, line)
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Stream reading error:', error)
+            onError('读取服务器响应失败')
+            setIsLoading(false)
+          }
+        }
+        
+        readStream()
+      })
+      .catch(error => {
+        console.error('Streaming request error:', error)
+        onError('连接服务器失败')
+        setIsLoading(false)
+      })
+      
+      // 返回清理函数
+      return () => {
+        setIsLoading(false)
+      }
+    },
+    []
+  )
+
   const getConfig = useCallback(async (): Promise<ApiResponse<Config>> => {
     return request<Config>('/config')
   }, [request])
@@ -110,6 +206,7 @@ export function useApi() {
     isLoading,
     request,
     sendChatMessage,
+    sendStreamingChatMessage,
     getConfig,
     updateConfig,
     getModels,

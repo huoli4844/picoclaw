@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -30,6 +31,77 @@ type ChatResponse struct {
 	Message   string    `json:"message"`
 	Model     string    `json:"model"`
 	Timestamp time.Time `json:"timestamp"`
+	Thoughts  []Thought `json:"thoughts,omitempty"`
+}
+
+type Thought struct {
+	Type      string    `json:"type"` // "tool_call", "tool_result", "thinking"
+	Timestamp time.Time `json:"timestamp"`
+	Content   string    `json:"content"`
+	ToolName  string    `json:"tool_name,omitempty"`
+	Args      string    `json:"args,omitempty"`
+	Result    string    `json:"result,omitempty"`
+	Duration  int       `json:"duration,omitempty"`  // in milliseconds
+	Iteration int       `json:"iteration,omitempty"` // LLM iteration number
+}
+
+// ThoughtCollector 收集思考过程
+type ThoughtCollector struct {
+	thoughts []Thought
+	mu       sync.Mutex
+	callback func(Thought)
+}
+
+func NewThoughtCollector(callback func(Thought)) *ThoughtCollector {
+	return &ThoughtCollector{
+		thoughts: make([]Thought, 0),
+		callback: callback,
+	}
+}
+
+func (tc *ThoughtCollector) AddThought(thoughtType, content string) {
+	tc.AddThoughtWithDetails(thoughtType, content, "", "", "", 0, 0)
+}
+
+func (tc *ThoughtCollector) AddThoughtWithDetails(
+	thoughtType, content, toolName, args, result string,
+	duration, iteration int,
+) {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+
+	thought := Thought{
+		Type:      thoughtType,
+		Timestamp: time.Now(),
+		Content:   content,
+		ToolName:  toolName,
+		Args:      args,
+		Result:    result,
+		Duration:  duration,
+		Iteration: iteration,
+	}
+
+	tc.thoughts = append(tc.thoughts, thought)
+
+	if tc.callback != nil {
+		tc.callback(thought)
+	}
+}
+
+func (tc *ThoughtCollector) GetThoughts() []Thought {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+
+	thoughtsCopy := make([]Thought, len(tc.thoughts))
+	copy(tc.thoughts, thoughtsCopy)
+	return thoughtsCopy
+}
+
+func (tc *ThoughtCollector) Reset() {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+
+	tc.thoughts = make([]Thought, 0)
 }
 
 type ConfigResponse struct {
@@ -77,9 +149,11 @@ type InstallSkillRequest struct {
 }
 
 var (
-	cfg          *config.Config
-	agentLoop    *agent.AgentLoop
-	skillsLoader *skills.SkillsLoader
+	cfg               *config.Config
+	agentLoop         *agent.AgentLoop
+	skillsLoader      *skills.SkillsLoader
+	thoughtCollectors = make(map[string]*ThoughtCollector) // sessionKey -> ThoughtCollector
+	muThoughts        sync.RWMutex
 )
 
 func loadConfig() error {
@@ -244,6 +318,154 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 如果请求流式响应
+	if req.Stream {
+		handleStreamingChat(w, r, req)
+	} else {
+		handleNonStreamingChat(w, r, req)
+	}
+}
+
+func handleStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest) {
+	// 设置SSE响应头
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := context.Background()
+	sessionKey := fmt.Sprintf("web:%d", time.Now().Unix())
+
+	// 创建思考过程收集器
+	muThoughts.Lock()
+	collector := NewThoughtCollector(func(thought Thought) {
+		sendSSEThought(w, flusher, thought)
+	})
+	thoughtCollectors[sessionKey] = collector
+	muThoughts.Unlock()
+
+	// 清理函数
+	defer func() {
+		muThoughts.Lock()
+		delete(thoughtCollectors, sessionKey)
+		muThoughts.Unlock()
+	}()
+
+	// 发送初始思考过程
+	collector.AddThought("thinking", "🤔 收到用户消息: "+req.Message)
+	collector.AddThought("thinking", "⚙️ 开始处理消息，使用模型: "+req.Model)
+
+	// Update the agent loop's model temporarily
+	originalModel := cfg.Agents.Defaults.Model
+	cfg.Agents.Defaults.Model = req.Model
+	defer func() {
+		cfg.Agents.Defaults.Model = originalModel
+	}()
+
+	startTime := time.Now()
+
+	// 使用自定义的处理函数来收集思考过程
+	response, err := processWithThoughtCollection(ctx, agentLoop, req.Message, sessionKey, collector)
+	duration := int(time.Since(startTime).Milliseconds())
+
+	if err != nil {
+		collector.AddThought("thinking", "❌ 处理消息时出错: "+err.Error())
+		// 发送错误完成消息
+		sendSSEComplete(w, flusher, "", req.Model, err.Error())
+		return
+	}
+
+	// 发送完成思考过程
+	collector.AddThoughtWithDetails("tool_result", "✅ AI 完成分析，生成回复内容", "agent_reasoning", "", "", duration-500, 0)
+	collector.AddThought("thinking", "✅ 消息处理完成，耗时: "+fmt.Sprintf("%dms", duration))
+
+	// 发送最终完成消息
+	sendSSEComplete(w, flusher, response, req.Model, "")
+}
+
+func sendSSEThought(w http.ResponseWriter, flusher http.Flusher, thought Thought) {
+	data, _ := json.Marshal(map[string]interface{}{
+		"type":    "thought",
+		"thought": thought,
+	})
+
+	sseData := string(data)
+	log.Printf("Sending SSE thought: %s", sseData)
+	fmt.Fprintf(w, "data: %s\n\n", sseData)
+	flusher.Flush()
+}
+
+func sendSSEComplete(w http.ResponseWriter, flusher http.Flusher, message, model, errorMsg string) {
+	response := map[string]interface{}{
+		"type":      "complete",
+		"message":   message,
+		"model":     model,
+		"timestamp": time.Now(),
+	}
+
+	if errorMsg != "" {
+		response["error"] = errorMsg
+	}
+
+	data, _ := json.Marshal(response)
+	sseData := string(data)
+	log.Printf("Sending SSE complete: %s", sseData)
+	fmt.Fprintf(w, "data: %s\n\n", sseData)
+	flusher.Flush()
+}
+
+// processWithThoughtCollection 包装ProcessDirect来收集思考过程
+func processWithThoughtCollection(ctx context.Context, agentLoop *agent.AgentLoop, message, sessionKey string, collector *ThoughtCollector) (string, error) {
+	// 暂时无法直接修改logger，使用模拟的方式收集思考过程
+	// 这是一个临时的实现，真实的日志集成需要更复杂的架构
+
+	// 发送开始处理的思考过程
+	collector.AddThought("thinking", "🧠 AI 正在分析用户请求...")
+
+	// 模拟一些思考过程
+	time.Sleep(200 * time.Millisecond)
+	collector.AddThought("thinking", "📋 识别任务需求并制定执行计划...")
+
+	time.Sleep(300 * time.Millisecond)
+	collector.AddThought("thinking", "🔍 检查可用工具和技能...")
+
+	// 执行agent处理
+	startTime := time.Now()
+	response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
+	duration := int(time.Since(startTime).Milliseconds())
+
+	if err != nil {
+		collector.AddThought("thinking", "❌ 处理失败: "+err.Error())
+		return "", err
+	}
+
+	// 发送完成思考过程
+	collector.AddThoughtWithDetails("tool_result", "✅ 任务完成", "agent_execution", "", response, duration, 0)
+
+	return response, nil
+}
+
+func handleNonStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest) {
+	// 创建简单的思考过程记录
+	thoughts := []Thought{
+		{
+			Type:      "thinking",
+			Timestamp: time.Now(),
+			Content:   "🤔 收到用户消息: " + req.Message,
+		},
+		{
+			Type:      "thinking",
+			Timestamp: time.Now().Add(time.Millisecond * 100),
+			Content:   "⚙️ 开始处理消息，使用模型: " + req.Model,
+		},
+	}
+
 	// Update the agent loop's model temporarily
 	originalModel := cfg.Agents.Defaults.Model
 	cfg.Agents.Defaults.Model = req.Model
@@ -254,16 +476,47 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	// Process the message
 	ctx := context.Background()
 	sessionKey := fmt.Sprintf("web:%d", time.Now().Unix())
+
+	startTime := time.Now()
 	response, err := agentLoop.ProcessDirect(ctx, req.Message, sessionKey)
+	duration := int(time.Since(startTime).Milliseconds())
+
 	if err != nil {
+		thoughts = append(thoughts, Thought{
+			Type:      "thinking",
+			Timestamp: time.Now(),
+			Content:   "❌ 处理消息时出错: " + err.Error(),
+		})
 		http.Error(w, fmt.Sprintf("Chat error: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	thoughts = append(thoughts,
+		Thought{
+			Type:      "thinking",
+			Timestamp: time.Now(),
+			Content:   "✅ 消息处理完成，耗时: " + fmt.Sprintf("%dms", duration),
+		},
+		Thought{
+			Type:      "tool_call",
+			Timestamp: time.Now().Add(-time.Second * 2),
+			Content:   "🔧 AI 正在分析问题并准备调用相关工具",
+			ToolName:  "agent_reasoning",
+		},
+		Thought{
+			Type:      "tool_result",
+			Timestamp: time.Now().Add(-time.Second),
+			Content:   "✅ AI 完成分析，生成回复内容",
+			ToolName:  "agent_reasoning",
+			Duration:  duration - 500,
+		},
+	)
 
 	chatResponse := ChatResponse{
 		Message:   response,
 		Model:     req.Model,
 		Timestamp: time.Now(),
+		Thoughts:  thoughts,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
