@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChatMessage } from './components/ChatMessage'
 import { ChatInput } from './components/ChatInput'
-import { ModelSelector } from './components/ModelSelector'
 import { TypingIndicator } from './components/TypingIndicator'
-import { ModelSettings } from './components/settings/ModelSettings'
+import { Sidebar } from './components/layout/Sidebar'
+import { Header } from './components/layout/Header'
+import { SettingsPage } from './components/settings/SettingsPage'
 import { SkillsPage } from './components/skills/SkillsPage'
 import { ScrollArea } from './components/ui/scroll-area'
+import { ThemeProvider } from './contexts/ThemeContext'
 import { useApi } from './hooks/useApi'
 import { Message, Model, ChatResponse } from './types'
 import { Brain } from 'lucide-react'
@@ -14,8 +16,8 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [currentView, setCurrentView] = useState<'chat' | 'skills'>('chat')
+  const [currentView, setCurrentView] = useState<'chat' | 'skills' | 'settings'>('chat')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -165,84 +167,106 @@ function App() {
 
   if (!isInitialized) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="flex items-center gap-2">
-          <Brain className="w-6 h-6 animate-pulse" />
-          <span>正在初始化...</span>
+      <ThemeProvider>
+        <div className="flex items-center justify-center h-screen bg-gradient-to-br from-background via-muted/10 to-background">
+          <div className="flex flex-col items-center gap-4 p-8">
+            <Brain className="w-12 h-12 text-primary animate-pulse" />
+            <div className="text-center">
+              <p className="text-lg font-medium">正在初始化...</p>
+              <p className="text-sm text-muted-foreground mt-1">PicoClaw AI Assistant</p>
+            </div>
+          </div>
         </div>
-      </div>
+      </ThemeProvider>
     )
   }
 
   if (currentView === 'skills') {
     return (
-      <SkillsPage
-        onBack={() => setCurrentView('chat')}
-      />
+      <ThemeProvider>
+        <SkillsPage onBack={() => setCurrentView('chat')} />
+      </ThemeProvider>
+    )
+  }
+
+  if (currentView === 'settings') {
+    return (
+      <ThemeProvider>
+        <SettingsPage
+          onBack={() => setCurrentView('chat')}
+          models={models}
+          onModelsChange={handleModelsChange}
+        />
+      </ThemeProvider>
     )
   }
 
   return (
-    <div className="chat-container">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Brain className="w-8 h-8 text-primary" />
-            <div>
-              <h1 className="text-xl font-semibold">PicoClaw Web</h1>
-              <p className="text-sm text-muted-foreground">轻量级 AI 助手</p>
-            </div>
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar */}
+      <Sidebar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        isSidebarOpen={isSidebarOpen}
+        onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <Header
+          selectedModel={selectedModel}
+          models={models}
+          onModelChange={setSelectedModel}
+          onOpenSettings={() => setCurrentView('settings')}
+          onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        />
+
+        {/* Messages */}
+        <ScrollArea className="flex-1">
+          <div className="chat-messages max-w-4xl mx-auto">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-64 text-muted-foreground">
+                <div className="text-center">
+                  <div className="relative mb-6">
+                    <Brain className="w-16 h-16 mx-auto text-primary opacity-20" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-4 h-4 bg-primary rounded-full animate-ping" />
+                    </div>
+                  </div>
+                  <h2 className="text-2xl font-semibold mb-2">开始对话吧！</h2>
+                  <p className="text-muted-foreground mb-4">我是 PicoClaw，您的智能 AI 助手</p>
+                  <div className="flex flex-wrap justify-center gap-2 text-sm">
+                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">📝 内容创作</span>
+                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">💻 编程助手</span>
+                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🔍 数据分析</span>
+                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🎨 创意设计</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((message) => (
+                  <ChatMessage key={message.id} message={message} />
+                ))}
+                {isLoading && <TypingIndicator />}
+              </>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Input */}
+        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
+          <div className="max-w-4xl mx-auto">
+            <ChatInput
+              onSendMessage={handleSendMessage}
+              isLoading={isLoading}
+              disabled={!selectedModel || models.length === 0}
+            />
           </div>
         </div>
-      </header>
-
-      {/* Model Selector */}
-      <ModelSelector
-        models={models}
-        selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenSkills={() => setCurrentView('skills')}
-      />
-
-      {/* Messages */}
-      <ScrollArea className="flex-1">
-        <div className="chat-messages max-w-4xl mx-auto">
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-64 text-muted-foreground">
-              <div className="text-center">
-                <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>开始对话吧！</p>
-                <p className="text-sm mt-2">我是 PicoClaw，您的轻量级 AI 助手</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
-              ))}
-              {isLoading && <TypingIndicator />}
-            </>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-      </ScrollArea>
-
-      {/* Input */}
-      <ChatInput
-        onSendMessage={handleSendMessage}
-        isLoading={isLoading}
-        disabled={!selectedModel || models.length === 0}
-      />
-
-      {/* Settings Dialog */}
-      <ModelSettings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        models={models}
-        onModelsChange={handleModelsChange}
-      />
+      </div>
     </div>
   )
 }

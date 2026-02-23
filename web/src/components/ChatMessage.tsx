@@ -12,21 +12,44 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
 
+  if (isUser) {
+    return (
+      <div className={`chat-message user`}>
+        <div className="chat-avatar user">
+          <Avatar className="w-8 h-8">
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              <User className="w-4 h-4" />
+            </AvatarFallback>
+          </Avatar>
+        </div>
+        <div className="chat-content user">
+          <div className="flex flex-col">
+            <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+            <div className="flex items-center gap-2 text-xs mt-2 text-primary-foreground/70">
+              <span>{formatMessageTime(message.timestamp)}</span>
+              {message.model && <span>• {message.model}</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className={`chat-message ${message.role}`}>
-      <div className="chat-avatar">
+    <div className={`chat-message assistant`}>
+      <div className="chat-avatar assistant">
         <Avatar className="w-8 h-8">
-          <AvatarFallback className={isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}>
-            {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+          <AvatarFallback className="bg-secondary text-secondary-foreground">
+            <Bot className="w-4 h-4" />
           </AvatarFallback>
         </Avatar>
       </div>
-      <div className="chat-content">
-        <div className="flex flex-col space-y-3">
-          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+      <div className="chat-content assistant">
+        <div className="flex flex-col space-y-4">
+          <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
           
           {/* 显示思考过程 */}
-          {!isUser && message.thoughts && message.thoughts.length > 0 && (
+          {message.thoughts && message.thoughts.length > 0 && (
             <ThoughtProcess thoughts={message.thoughts} />
           )}
           

@@ -30,16 +30,16 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
   const getThoughtStyle = (thought: Thought) => {
     switch (thought.type) {
       case 'thinking':
-        return 'border-l-blue-200 bg-blue-50/50'
+        return 'border-l-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10'
       case 'tool_call':
-        return 'border-l-orange-200 bg-orange-50/50'
+        return 'border-l-orange-500/20 bg-orange-500/5 dark:bg-orange-500/10'
       case 'tool_result':
         if (thought.result?.includes('❌') || thought.result?.includes('失败')) {
-          return 'border-l-red-200 bg-red-50/50'
+          return 'border-l-red-500/20 bg-red-500/5 dark:bg-red-500/10'
         }
-        return 'border-l-green-200 bg-green-50/50'
+        return 'border-l-green-500/20 bg-green-500/5 dark:bg-green-500/10'
       default:
-        return 'border-l-gray-200 bg-gray-50/50'
+        return 'border-l-gray-500/20 bg-gray-500/5 dark:bg-gray-500/10'
     }
   }
 
