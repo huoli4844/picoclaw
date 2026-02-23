@@ -194,3 +194,16 @@
 .glowing-border {
   @apply ring-2 ring-primary/20 ring-offset-2 ring-offset-background focus-within:ring-primary/40;
 }
+
+/* AI思考过程样式 */
+.thought-process-container {
+  @apply max-w-[80%] break-words;
+}
+
+.thought-item-content {
+  @apply max-w-full overflow-hidden;
+}
+
+.thought-code-block {
+  @apply max-w-full overflow-x-auto;
+}

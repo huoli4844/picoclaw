@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Brain, Wrench, CheckCircle, AlertCircle, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Brain, Wrench, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
 import { MarkdownRenderer } from './ui/markdown-renderer'
@@ -11,6 +11,42 @@ interface ThoughtProcessProps {
 
 export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
   const [isExpanded, setIsExpanded] = useState(true)
+
+  const exportToJSON = () => {
+    // 准备导出的数据，包含思考过程的完整信息
+    const exportData = {
+      exportInfo: {
+        timestamp: new Date().toISOString(),
+        totalThoughts: thoughts.length,
+        exportType: 'AI思考过程'
+      },
+      thoughts: thoughts.map((thought, index) => ({
+        index: index + 1,
+        timestamp: thought.timestamp,
+        type: thought.type,
+        content: thought.content,
+        toolName: thought.tool_name || null,
+        args: thought.args ? JSON.parse(thought.args) : null,
+        result: thought.result || null,
+        duration: thought.duration || null
+      }))
+    }
+
+    // 创建下载链接
+    const dataStr = JSON.stringify(exportData, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    
+    // 创建临时下载链接并触发下载
+    const link = document.createElement('a')
+    link.href = url
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    link.download = `ai-thoughts-${timestamp}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   const getThoughtIcon = (thought: Thought) => {
     switch (thought.type) {
@@ -58,12 +94,8 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
   }
 
   return (
-    <div className="border rounded-lg bg-background">
-      <Button
-        variant="ghost"
-        className="w-full justify-between p-3 h-auto"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+    <div className="thought-process-container border rounded-lg bg-background">
+      <div className="flex items-center justify-between p-3 border-b bg-muted/30">
         <div className="flex items-center gap-2">
           <Brain className="w-4 h-4" />
           <span className="font-medium">AI 思考过程</span>
@@ -71,12 +103,32 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
             ({thoughts.length} 步)
           </span>
         </div>
-        {isExpanded ? (
-          <ChevronDown className="w-4 h-4" />
-        ) : (
-          <ChevronRight className="w-4 h-4" />
-        )}
-      </Button>
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToJSON}
+            title="导出为JSON文件"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            导出
+          </Button>
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(!isExpanded)}
+            title={isExpanded ? "收起" : "展开"}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </Button>
+        </div>
+      </div>
 
       {isExpanded && (
         <ScrollArea className="h-64 border-t">
@@ -107,7 +159,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
                         </span>
                       )}
                     </div>
-                    <div className="text-sm break-words">
+                    <div className="thought-item-content text-sm break-words">
                       <MarkdownRenderer content={thought.content} />
                     </div>
                     {thought.args && (
@@ -115,7 +167,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
                         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                           查看参数
                         </summary>
-                        <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">
+                        <pre className="thought-code-block text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">
                           {JSON.stringify(JSON.parse(thought.args), null, 2)}
                         </pre>
                       </details>
