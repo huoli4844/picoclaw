@@ -1,0 +1,39 @@
+# 多阶段构建 Dockerfile for PicoClaw Web
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app/web
+COPY web/package*.json ./
+RUN npm ci --only=production
+
+COPY web/ ./
+RUN npm run build
+
+# Go 后端构建
+FROM golang:1.21-alpine AS backend-builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o picoclaw-web-server ./cmd/web-server
+
+# 最终运行镜像
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+# 复制后端二进制文件
+COPY --from=backend-builder /app/picoclaw-web-server .
+
+# 复制前端构建文件
+COPY --from=frontend-builder /app/web/dist ./web/dist
+
+# 创建配置目录
+RUN mkdir -p /root/.picoclaw
+
+EXPOSE 8080
+
+CMD ["./picoclaw-web-server"]
