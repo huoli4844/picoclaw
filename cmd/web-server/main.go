@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -47,15 +49,24 @@ type Thought struct {
 
 // ThoughtCollector 收集思考过程
 type ThoughtCollector struct {
-	thoughts []Thought
-	mu       sync.Mutex
-	callback func(Thought)
+	thoughts   []Thought
+	mu         sync.Mutex
+	callback   func(Thought)
+	sessionKey string // 用于过滤特定会话的日志
 }
 
 func NewThoughtCollector(callback func(Thought)) *ThoughtCollector {
 	return &ThoughtCollector{
 		thoughts: make([]Thought, 0),
 		callback: callback,
+	}
+}
+
+func NewThoughtCollectorWithSession(callback func(Thought), sessionKey string) *ThoughtCollector {
+	return &ThoughtCollector{
+		thoughts:   make([]Thought, 0),
+		callback:   callback,
+		sessionKey: sessionKey,
 	}
 }
 
@@ -85,6 +96,293 @@ func (tc *ThoughtCollector) AddThoughtWithDetails(
 
 	if tc.callback != nil {
 		tc.callback(thought)
+	}
+}
+
+// LogEntryAdapter 适配日志系统以收集详细日志
+type LogEntryAdapter struct {
+	collector *ThoughtCollector
+}
+
+func NewLogEntryAdapter(collector *ThoughtCollector) *LogEntryAdapter {
+	return &LogEntryAdapter{
+		collector: collector,
+	}
+}
+
+// OnLogEntry 实现LogListener接口，处理日志条目，转换为Thought格式
+func (la *LogEntryAdapter) OnLogEntry(logLevel logger.LogLevel, component string, message string, fields map[string]any) {
+	// 只处理INFO级别及以上，且组件为agent或tool的日志
+	if component != "agent" && component != "tool" {
+		return
+	}
+
+	// 会话过滤 - 如果有sessionKey字段，确保匹配当前会话
+	if la.collector.sessionKey != "" && fields != nil {
+		if sessionKey, ok := fields["session_key"].(string); ok {
+			// 如果session key不匹配，则忽略此日志
+			if sessionKey != la.collector.sessionKey && !strings.Contains(sessionKey, strings.TrimPrefix(la.collector.sessionKey, "web:")) {
+				return
+			}
+		}
+	}
+
+	// 根据消息内容和组件类型生成不同类型的Thought
+	switch {
+	case component == "agent" && strings.Contains(message, "LLM requested tool calls"):
+		// 解析工具调用列表 - 只显示实际存在的工具
+		var toolsInfo string
+		if fields != nil {
+			if tools, ok := fields["tools"].([]string); ok {
+				// 过滤掉不存在的工具（如list_skills）
+				var validTools []string
+				for _, tool := range tools {
+					if tool != "list_skills" { // list_skills不是真实工具
+						validTools = append(validTools, tool)
+					}
+				}
+				if len(validTools) > 0 {
+					toolsInfo = fmt.Sprintf("请求工具: [%s]", strings.Join(validTools, ", "))
+					toolsInfo += fmt.Sprintf(" (共%d个)", len(validTools))
+					la.collector.AddThought("tool_request", fmt.Sprintf("🤖 AI请求工具调用: %s", toolsInfo))
+				}
+			}
+		}
+
+	case component == "agent" && strings.Contains(message, "Tool call:"):
+		// 解析工具调用信息，从消息中提取工具名和参数
+		// 消息格式通常是: "Tool call: exec({"command":"which node && which npm"})"
+		toolName := "unknown"
+		argsStr := ""
+
+		// 尝试从fields获取信息
+		if fields != nil {
+			if name, ok := fields["tool"].(string); ok {
+				toolName = name
+			}
+		}
+
+		// 过滤掉不存在的工具
+		if toolName == "list_skills" {
+			return // 跳过不存在的工具
+		}
+
+		// 尝试从消息中解析参数
+		if strings.Contains(message, "(") && strings.Contains(message, ")") {
+			start := strings.Index(message, "(") + 1
+			end := strings.LastIndex(message, ")")
+			if start > 0 && end > start {
+				argsStr = message[start:end]
+				// 尝试格式化JSON参数
+				if json.Valid([]byte(argsStr)) {
+					var prettyJSON bytes.Buffer
+					if json.Indent(&prettyJSON, []byte(argsStr), "", "  ") == nil {
+						argsStr = prettyJSON.String()
+					}
+				}
+			}
+		}
+
+		if argsStr != "" {
+			la.collector.AddThought("tool_call", fmt.Sprintf("🔧 调用工具: %s\n📝 参数:\n```json\n%s\n```", toolName, argsStr))
+		} else {
+			la.collector.AddThought("tool_call", fmt.Sprintf("🔧 调用工具: %s", toolName))
+		}
+
+	case component == "tool" && strings.Contains(message, "Tool execution started"):
+		// 工具执行开始，获取详细参数
+		var toolName string
+		var argsInfo string
+
+		if fields != nil {
+			if name, ok := fields["tool"].(string); ok {
+				toolName = name
+			}
+			if args, ok := fields["args"].(map[string]interface{}); ok {
+				argsJSON, _ := json.Marshal(args)
+				argsStr := string(argsJSON)
+				// 美化JSON格式
+				var prettyJSON bytes.Buffer
+				if json.Indent(&prettyJSON, []byte(argsStr), "", "  ") == nil {
+					argsInfo = prettyJSON.String()
+				} else {
+					argsInfo = argsStr
+				}
+				// 限制长度
+				if len(argsInfo) > 300 {
+					argsInfo = argsInfo[:297] + "..."
+				}
+			}
+		}
+
+		if argsInfo != "" {
+			la.collector.AddThought("tool_start", fmt.Sprintf("🚀 开始执行工具: %s\n📋 完整参数:\n```json\n%s\n```", toolName, argsInfo))
+		} else {
+			la.collector.AddThought("tool_start", fmt.Sprintf("🚀 开始执行工具: %s", toolName))
+		}
+
+	case component == "tool" && strings.Contains(message, "Tool execution completed"):
+		// 工具执行完成，显示执行时间和详细结果
+		var toolName string
+		var duration int
+		var resultLength int
+
+		if fields != nil {
+			if name, ok := fields["tool"].(string); ok {
+				toolName = name
+			}
+			if dur, ok := fields["duration_ms"].(int); ok {
+				duration = dur
+			}
+			if resLen, ok := fields["result_length"].(int); ok {
+				resultLength = resLen
+			}
+		}
+
+		resultInfo := fmt.Sprintf("✅ 工具执行完成: %s", toolName)
+		if duration > 0 {
+			resultInfo += fmt.Sprintf(" (耗时: %dms)", duration)
+		}
+		if resultLength > 0 {
+			resultInfo += fmt.Sprintf("\n📊 返回结果长度: %d字符", resultLength)
+		}
+
+		// 为特定工具添加详细信息
+		switch toolName {
+		case "read_file":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if path, ok := args["path"].(string); ok {
+						resultInfo += fmt.Sprintf("\n📄 读取文件: %s", path)
+						// 显示文件路径类型
+						if strings.Contains(path, "memory") {
+							resultInfo += "\n🧠 类型: 记忆文件"
+						} else if strings.Contains(path, "SKILL.md") {
+							resultInfo += "\n🛠️ 类型: 技能说明文件"
+						} else if strings.Contains(path, ".md") {
+							resultInfo += "\n📝 类型: Markdown文档"
+						}
+					}
+				}
+			}
+		case "write_file":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if path, pathOk := args["path"].(string); pathOk {
+						resultInfo += fmt.Sprintf("\n📝 写入文件: %s", path)
+						if content, contentOk := args["content"].(string); contentOk {
+							lines := strings.Count(content, "\n") + 1
+							resultInfo += fmt.Sprintf("\n📏 内容长度: %d行, %d字符", lines, len(content))
+							// 分析内容类型
+							if strings.Contains(content, "#!/bin/bash") {
+								resultInfo += "\n🐚 类型: Shell脚本"
+							} else if strings.Contains(content, "```") {
+								resultInfo += "\n💻 类型: 代码文件"
+							} else if strings.Contains(content, "# ") {
+								resultInfo += "\n📖 类型: Markdown文档"
+							}
+						}
+					}
+				}
+			}
+		case "append_file":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if path, pathOk := args["path"].(string); pathOk {
+						resultInfo += fmt.Sprintf("\n📎 追加内容到文件: %s", path)
+						if content, contentOk := args["content"].(string); contentOk {
+							resultInfo += fmt.Sprintf("\n📏 追加长度: %d字符", len(content))
+						}
+					}
+				}
+			}
+		case "list_dir":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if path, ok := args["path"].(string); ok {
+						resultInfo += fmt.Sprintf("\n📁 列出目录: %s", path)
+						if strings.Contains(path, "skills") {
+							resultInfo += "\n🛠️ 类型: 技能目录"
+						}
+					}
+				}
+			}
+		case "edit_file":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if path, ok := args["path"].(string); ok {
+						resultInfo += fmt.Sprintf("\n✏️ 编辑文件: %s", path)
+						if oldText, ok := args["old_text"].(string); ok {
+							resultInfo += fmt.Sprintf("\n📝 替换文本长度: %d字符", len(oldText))
+						}
+					}
+				}
+			}
+		case "exec":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if cmd, cmdOk := args["command"].(string); cmdOk {
+						resultInfo += fmt.Sprintf("\n⚡ 执行命令: %s", cmd)
+						// 分析命令类型
+						if strings.HasPrefix(cmd, "ls") {
+							resultInfo += "\n📋 类型: 文件列表命令"
+						} else if strings.HasPrefix(cmd, "mkdir") {
+							resultInfo += "\n📁 类型: 创建目录命令"
+						} else if strings.HasPrefix(cmd, "git") {
+							resultInfo += "\n🔧 类型: Git命令"
+						} else if strings.HasPrefix(cmd, "cat") {
+							resultInfo += "\n📄 类型: 文件查看命令"
+						}
+					}
+				}
+			}
+		case "find_skills":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if query, queryOk := args["query"].(string); queryOk {
+						resultInfo += fmt.Sprintf("\n🔍 搜索技能: %s", query)
+					}
+					if limit, limitOk := args["limit"].(int); limitOk {
+						resultInfo += fmt.Sprintf("\n📊 限制结果: %d个", limit)
+					}
+				}
+			}
+		case "install_skill":
+			if fields != nil {
+				if args, ok := fields["args"].(map[string]interface{}); ok {
+					if slug, slugOk := args["slug"].(string); slugOk {
+						resultInfo += fmt.Sprintf("\n📦 安装技能: %s", slug)
+					}
+					if registry, regOk := args["registry"].(string); regOk {
+						resultInfo += fmt.Sprintf("\n📚 来源仓库: %s", registry)
+					}
+				}
+			}
+		}
+
+		la.collector.AddThought("tool_complete", resultInfo)
+
+	case component == "tool" && strings.Contains(message, "Tool execution failed"):
+		// 工具执行失败
+		var toolName string
+		var errorMsg string
+
+		if fields != nil {
+			if name, ok := fields["tool"].(string); ok {
+				toolName = name
+			}
+			if err, ok := fields["error"].(string); ok {
+				errorMsg = err
+			}
+		}
+
+		la.collector.AddThought("tool_error", fmt.Sprintf("❌ 工具执行失败: %s\n🔍 错误信息: %s", toolName, errorMsg))
+
+	default:
+		// 其他agent相关的日志
+		if component == "agent" {
+			la.collector.AddThought("agent_log", message)
+		}
 	}
 }
 
@@ -152,9 +450,18 @@ var (
 	cfg               *config.Config
 	agentLoop         *agent.AgentLoop
 	skillsLoader      *skills.SkillsLoader
+	skillsWorkspace   string                               // 工作区路径
 	thoughtCollectors = make(map[string]*ThoughtCollector) // sessionKey -> ThoughtCollector
 	muThoughts        sync.RWMutex
+	logAdapters       = make(map[string]*LogEntryAdapter) // sessionKey -> LogEntryAdapter
+	muAdapters        sync.RWMutex
 )
+
+// 全局日志处理器，用于捕获日志并发送到适配器
+func init() {
+	// 设置日志级别为DEBUG以捕获所有日志
+	logger.SetLevel(logger.DEBUG)
+}
 
 func loadConfig() error {
 	home, _ := os.UserHomeDir()
@@ -181,7 +488,6 @@ func loadConfig() error {
 	agentLoop = agent.NewAgentLoop(cfg, msgBus, provider)
 
 	// Initialize skills loader - 使用与主程序相同的工作空间配置
-	var skillsWorkspace string
 	if cfg != nil && cfg.Agents.Defaults.Workspace != "" {
 		skillsWorkspace = cfg.WorkspacePath()
 		log.Printf("Using configured workspace: %s", skillsWorkspace)
@@ -344,29 +650,50 @@ func handleStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest
 
 	// 创建思考过程收集器
 	muThoughts.Lock()
-	collector := NewThoughtCollector(func(thought Thought) {
+	collector := NewThoughtCollectorWithSession(func(thought Thought) {
 		sendSSEThought(w, flusher, thought)
-	})
+	}, sessionKey)
 	thoughtCollectors[sessionKey] = collector
 	muThoughts.Unlock()
+
+	// 创建日志适配器来捕获agent和tool的详细日志
+	logAdapter := NewLogEntryAdapter(collector)
+
+	// 注册到日志系统以监听真实的日志
+	logger.AddLogListener(logAdapter)
+
+	// 注册日志适配器
+	muAdapters.Lock()
+	logAdapters[sessionKey] = logAdapter
+	muAdapters.Unlock()
+
+	// Update the agent loop's model temporarily
+	originalModel := cfg.Agents.Defaults.Model
+	cfg.Agents.Defaults.Model = req.Model
 
 	// 清理函数
 	defer func() {
 		muThoughts.Lock()
 		delete(thoughtCollectors, sessionKey)
 		muThoughts.Unlock()
-	}()
 
-	// 发送初始思考过程
-	collector.AddThought("thinking", "🤔 收到用户消息: "+req.Message)
-	collector.AddThought("thinking", "⚙️ 开始处理消息，使用模型: "+req.Model)
+		muAdapters.Lock()
+		delete(logAdapters, sessionKey)
+		muAdapters.Unlock()
 
-	// Update the agent loop's model temporarily
-	originalModel := cfg.Agents.Defaults.Model
-	cfg.Agents.Defaults.Model = req.Model
-	defer func() {
+		// 从日志系统中移除监听器
+		logger.RemoveLogListener(logAdapter)
+
 		cfg.Agents.Defaults.Model = originalModel
 	}()
+
+	// 发送详细的初始思考过程
+	collector.AddThought("thinking", "🤔 收到用户消息: "+req.Message)
+	collector.AddThought("thinking", "📋 创建会话: "+sessionKey)
+	collector.AddThought("thinking", "⚙️ 开始处理消息，使用模型: "+req.Model)
+	collector.AddThought("thinking", "🔍 连接日志监听器以捕获所有系统操作...")
+	collector.AddThought("thinking", "🧠 AI 系统初始化完成，开始智能分析...")
+	collector.AddThought("thinking", "📝 准备调用 AgentLoop 处理用户请求...")
 
 	startTime := time.Now()
 
@@ -422,20 +749,14 @@ func sendSSEComplete(w http.ResponseWriter, flusher http.Flusher, message, model
 
 // processWithThoughtCollection 包装ProcessDirect来收集思考过程
 func processWithThoughtCollection(ctx context.Context, agentLoop *agent.AgentLoop, message, sessionKey string, collector *ThoughtCollector) (string, error) {
-	// 暂时无法直接修改logger，使用模拟的方式收集思考过程
-	// 这是一个临时的实现，真实的日志集成需要更复杂的架构
-
-	// 发送开始处理的思考过程
+	// 发送详细的系统处理步骤
 	collector.AddThought("thinking", "🧠 AI 正在分析用户请求...")
-
-	// 模拟一些思考过程
-	time.Sleep(200 * time.Millisecond)
-	collector.AddThought("thinking", "📋 识别任务需求并制定执行计划...")
-
-	time.Sleep(300 * time.Millisecond)
+	collector.AddThought("thinking", "📋 识别任务类型和需求...")
 	collector.AddThought("thinking", "🔍 检查可用工具和技能...")
+	collector.AddThought("thinking", "⚡ 准备调用 AgentLoop 执行处理...")
 
-	// 执行agent处理
+	// 执行agent处理，同时通过日志监听器实时收集所有操作
+	collector.AddThought("thinking", "🚀 开始调用 AgentLoop.ProcessDirect...")
 	startTime := time.Now()
 	response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
 	duration := int(time.Since(startTime).Milliseconds())
@@ -446,7 +767,8 @@ func processWithThoughtCollection(ctx context.Context, agentLoop *agent.AgentLoo
 	}
 
 	// 发送完成思考过程
-	collector.AddThoughtWithDetails("tool_result", "✅ 任务完成", "agent_execution", "", response, duration, 0)
+	collector.AddThought("thinking", "✅ AgentLoop 处理完成，耗时: "+fmt.Sprintf("%dms", duration))
+	collector.AddThoughtWithDetails("tool_result", "✅ AI 完成分析，生成回复内容", "agent_reasoning", "", response, duration, 0)
 
 	return response, nil
 }
@@ -740,12 +1062,29 @@ func installSkillHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req InstallSkillRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("Invalid install request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Installing skill: slug=%s, registry=%s, version=%s", req.Slug, req.Registry, req.Version)
+
+	// 检查配置
+	if cfg == nil {
+		log.Printf("Configuration is nil")
+		http.Error(w, "Configuration not loaded", http.StatusInternalServerError)
+		return
+	}
+
+	if !cfg.Tools.Skills.Registries.ClawHub.Enabled {
+		log.Printf("ClawHub registry is not enabled")
+		http.Error(w, "ClawHub registry not enabled", http.StatusServiceUnavailable)
 		return
 	}
 
 	// 使用工具安装技能
 	clawHubConfig := cfg.Tools.Skills.Registries.ClawHub
+	log.Printf("ClawHub config: BaseURL=%s, Enabled=%v", clawHubConfig.BaseURL, clawHubConfig.Enabled)
 	registryConfig := skills.RegistryConfig{
 		ClawHub: skills.ClawHubConfig{
 			Enabled:         clawHubConfig.Enabled,
@@ -761,7 +1100,7 @@ func installSkillHandler(w http.ResponseWriter, r *http.Request) {
 		MaxConcurrentSearches: cfg.Tools.Skills.MaxConcurrentSearches,
 	}
 	registryMgr := skills.NewRegistryManagerFromConfig(registryConfig)
-	installSkillTool := tools.NewInstallSkillTool(registryMgr, ".")
+	installSkillTool := tools.NewInstallSkillTool(registryMgr, skillsWorkspace)
 
 	installParams := map[string]interface{}{
 		"slug":     req.Slug,
@@ -783,9 +1122,11 @@ func installSkillHandler(w http.ResponseWriter, r *http.Request) {
 	if !result.IsError {
 		status = "success"
 		message = "Skill installed successfully"
+		log.Printf("Skill installation successful: %s", req.Slug)
 	} else {
 		status = "error"
 		message = result.ForLLM
+		log.Printf("Skill installation failed: %s, error: %s", req.Slug, result.ForLLM)
 	}
 
 	response := map[string]interface{}{
@@ -794,6 +1135,7 @@ func installSkillHandler(w http.ResponseWriter, r *http.Request) {
 		"result":  result.ForLLM,
 	}
 
+	log.Printf("Sending install response: %v", response)
 	json.NewEncoder(w).Encode(response)
 }
 

@@ -426,7 +426,7 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, agent *AgentInstance, opt
 	agent.Sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
 
 	// 4. Run LLM iteration loop
-	finalContent, iteration, err := al.runLLMIteration(ctx, agent, messages, opts)
+	finalContent, hasToolResults, iteration, err := al.runLLMIteration(ctx, agent, messages, opts)
 	if err != nil {
 		return "", err
 	}
@@ -436,7 +436,18 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, agent *AgentInstance, opt
 
 	// 5. Handle empty response
 	if finalContent == "" {
-		finalContent = opts.DefaultResponse
+		// Try to generate a response from tool results if we have any
+		if hasToolResults {
+			finalContent = "我已经完成了相关的操作和数据处理。请告诉我您还需要什么帮助，或者我可以为您总结一下获取到的信息。"
+		} else {
+			finalContent = opts.DefaultResponse
+		}
+		logger.InfoCF("agent", "Using fallback response due to empty final content",
+			map[string]any{
+				"agent_id":         agent.ID,
+				"has_tool_results": hasToolResults,
+				"fallback_used":    finalContent != opts.DefaultResponse,
+			})
 	}
 
 	// 6. Save final assistant message to session
@@ -476,9 +487,10 @@ func (al *AgentLoop) runLLMIteration(
 	agent *AgentInstance,
 	messages []providers.Message,
 	opts processOptions,
-) (string, int, error) {
+) (string, bool, int, error) {
 	iteration := 0
 	var finalContent string
+	var hasToolResults bool
 
 	for iteration < agent.MaxIterations {
 		iteration++
@@ -591,7 +603,7 @@ func (al *AgentLoop) runLLMIteration(
 					"iteration": iteration,
 					"error":     err.Error(),
 				})
-			return "", iteration, fmt.Errorf("LLM call failed after retries: %w", err)
+			return "", false, iteration, fmt.Errorf("LLM call failed after retries: %w", err)
 		}
 
 		// Check if no tool calls - we're done
@@ -604,6 +616,17 @@ func (al *AgentLoop) runLLMIteration(
 					"content_chars": len(finalContent),
 				})
 			break
+		}
+
+		// Store assistant content even when there are tool calls
+		if response.Content != "" {
+			finalContent = response.Content
+			logger.InfoCF("agent", "LLM response with tool calls - storing content",
+				map[string]any{
+					"agent_id":      agent.ID,
+					"iteration":     iteration,
+					"content_chars": len(response.Content),
+				})
 		}
 
 		normalizedToolCalls := make([]providers.ToolCall, 0, len(response.ToolCalls))
@@ -658,6 +681,8 @@ func (al *AgentLoop) runLLMIteration(
 
 		// Execute tool calls
 		for _, tc := range normalizedToolCalls {
+			// Mark that we have tool results
+			hasToolResults = true
 			argsJSON, _ := json.Marshal(tc.Arguments)
 			argsPreview := utils.Truncate(string(argsJSON), 200)
 			logger.InfoCF("agent", fmt.Sprintf("Tool call: %s(%s)", tc.Name, argsPreview),
@@ -724,7 +749,7 @@ func (al *AgentLoop) runLLMIteration(
 		}
 	}
 
-	return finalContent, iteration, nil
+	return finalContent, hasToolResults, iteration, nil
 }
 
 // updateToolContexts updates the context for tools that need channel/chatID info.

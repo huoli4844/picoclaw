@@ -34,6 +34,10 @@ var (
 	logger       *Logger
 	once         sync.Once
 	mu           sync.RWMutex
+
+	// 日志监听器
+	logListeners []LogListener
+	listenersMu  sync.RWMutex
 )
 
 type Logger struct {
@@ -47,6 +51,40 @@ type LogEntry struct {
 	Message   string         `json:"message"`
 	Fields    map[string]any `json:"fields,omitempty"`
 	Caller    string         `json:"caller,omitempty"`
+}
+
+// LogListener 日志监听器接口
+type LogListener interface {
+	OnLogEntry(level LogLevel, component string, message string, fields map[string]any)
+}
+
+// AddLogListener 添加日志监听器
+func AddLogListener(listener LogListener) {
+	listenersMu.Lock()
+	defer listenersMu.Unlock()
+	logListeners = append(logListeners, listener)
+}
+
+// RemoveLogListener 移除日志监听器
+func RemoveLogListener(target LogListener) {
+	listenersMu.Lock()
+	defer listenersMu.Unlock()
+	for i, listener := range logListeners {
+		if listener == target {
+			logListeners = append(logListeners[:i], logListeners[i+1:]...)
+			break
+		}
+	}
+}
+
+// notifyListeners 通知所有监听器
+func notifyListeners(level LogLevel, component string, message string, fields map[string]any) {
+	listenersMu.RLock()
+	defer listenersMu.RUnlock()
+
+	for _, listener := range logListeners {
+		listener.OnLogEntry(level, component, message, fields)
+	}
 }
 
 func init() {
@@ -137,6 +175,9 @@ func logMessage(level LogLevel, component string, message string, fields map[str
 	)
 
 	log.Println(logLine)
+
+	// 通知所有监听器
+	notifyListeners(level, component, message, fields)
 
 	if level == FATAL {
 		os.Exit(1)
