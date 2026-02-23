@@ -667,12 +667,14 @@ func searchSkillsHandler(w http.ResponseWriter, r *http.Request) {
 		MaxConcurrentSearches: cfg.Tools.Skills.MaxConcurrentSearches,
 	}
 	registryMgr := skills.NewRegistryManagerFromConfig(registryConfig)
-	cache := skills.NewSearchCache(cfg.Tools.Skills.SearchCache.MaxSize, time.Duration(cfg.Tools.Skills.SearchCache.TTLSeconds)*time.Second)
-	findSkillTool := tools.NewFindSkillsTool(registryMgr, cache)
 
 	if req.Limit == 0 {
 		req.Limit = 10
 	}
+
+	// 使用缓存机制，与tool保持一致
+	cache := skills.NewSearchCache(cfg.Tools.Skills.SearchCache.MaxSize, time.Duration(cfg.Tools.Skills.SearchCache.TTLSeconds)*time.Second)
+	findSkillTool := tools.NewFindSkillsTool(registryMgr, cache)
 
 	ctx := context.Background()
 	result := findSkillTool.Execute(ctx, map[string]interface{}{
@@ -680,12 +682,44 @@ func searchSkillsHandler(w http.ResponseWriter, r *http.Request) {
 		"limit": req.Limit,
 	})
 
-	// 解析搜索结果
-	var searchResults []interface{}
+	// 检查缓存或直接搜索
+	var results []skills.SearchResult
+	var err error
+
 	if !result.IsError {
-		searchResults = []interface{}{result.ForLLM}
-	} else {
-		searchResults = []interface{}{}
+		// 先检查缓存
+		if cache != nil {
+			if cached, hit := cache.Get(req.Query); hit {
+				results = cached
+			} else {
+				// 缓存未命中，直接搜索
+				results, err = registryMgr.SearchAll(ctx, req.Query, req.Limit)
+				if err == nil && len(results) > 0 {
+					cache.Put(req.Query, results)
+				}
+			}
+		} else {
+			// 没有缓存，直接搜索
+			results, err = registryMgr.SearchAll(ctx, req.Query, req.Limit)
+		}
+	}
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Search failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 转换为前端期望的格式
+	searchResults := make([]interface{}, len(results))
+	for i, r := range results {
+		searchResults[i] = map[string]interface{}{
+			"slug":          r.Slug,
+			"display_name":  r.DisplayName,
+			"summary":       r.Summary,
+			"version":       r.Version,
+			"registry_name": r.RegistryName,
+			"score":         r.Score,
+		}
 	}
 
 	response := map[string]interface{}{
