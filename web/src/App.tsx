@@ -4,6 +4,7 @@ import { ChatInput } from './components/ChatInput'
 import { ModelSelector } from './components/ModelSelector'
 import { TypingIndicator } from './components/TypingIndicator'
 import { ModelSettings } from './components/settings/ModelSettings'
+import { SkillsPage } from './components/skills/SkillsPage'
 import { ScrollArea } from './components/ui/scroll-area'
 import { useApi } from './hooks/useApi'
 import { Message, Model } from './types'
@@ -15,6 +16,7 @@ function App() {
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [currentView, setCurrentView] = useState<'chat' | 'skills'>('chat')
   const [isInitialized, setIsInitialized] = useState(false)
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -151,6 +153,14 @@ function App() {
     )
   }
 
+  if (currentView === 'skills') {
+    return (
+      <SkillsPage
+        onBack={() => setCurrentView('chat')}
+      />
+    )
+  }
+
   return (
     <div className="chat-container">
       {/* Header */}
@@ -172,6 +182,7 @@ function App() {
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSkills={() => setCurrentView('skills')}
       />
 
       {/* Messages */}

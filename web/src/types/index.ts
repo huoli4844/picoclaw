@@ -50,3 +50,38 @@ export interface ChatResponse {
   model: string;
   timestamp: Date;
 }
+
+export interface Skill {
+  name: string;
+  path: string;
+  source: string;
+  description: string;
+}
+
+export interface SkillDetail extends Skill {
+  content: string;
+  metadata: Record<string, string>;
+}
+
+export interface SearchSkillsRequest {
+  query: string;
+  limit?: number;
+}
+
+export interface InstallSkillRequest {
+  slug: string;
+  registry: string;
+  version?: string;
+  force?: boolean;
+}
+
+export interface SearchSkillsResponse {
+  query: string;
+  results: any[];
+}
+
+export interface InstallSkillResponse {
+  status: 'success' | 'error';
+  message: string;
+  result?: string;
+}

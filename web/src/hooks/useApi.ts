@@ -1,5 +1,17 @@
 import { useState, useCallback } from 'react'
-import { ApiResponse, ChatRequest, ChatResponse, Model, Config } from '@/types'
+import { 
+  ApiResponse, 
+  ChatRequest, 
+  ChatResponse, 
+  Model, 
+  Config, 
+  Skill, 
+  SkillDetail,
+  SearchSkillsRequest, 
+  InstallSkillRequest,
+  SearchSkillsResponse,
+  InstallSkillResponse 
+} from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
 
@@ -72,6 +84,28 @@ export function useApi() {
     return request<Model[]>('/models')
   }, [request])
 
+  const getSkills = useCallback(async (): Promise<ApiResponse<Skill[]>> => {
+    return request<Skill[]>('/skills')
+  }, [request])
+
+  const getSkillDetail = useCallback(async (name: string): Promise<ApiResponse<SkillDetail>> => {
+    return request<SkillDetail>(`/skills/${name}`)
+  }, [request])
+
+  const searchSkills = useCallback(async (requestObj: SearchSkillsRequest): Promise<ApiResponse<SearchSkillsResponse>> => {
+    return request<SearchSkillsResponse>('/skills/search', {
+      method: 'POST',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
+  const installSkill = useCallback(async (requestObj: InstallSkillRequest): Promise<ApiResponse<InstallSkillResponse>> => {
+    return request<InstallSkillResponse>('/skills/install', {
+      method: 'POST',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
   return {
     isLoading,
     request,
@@ -79,5 +113,9 @@ export function useApi() {
     getConfig,
     updateConfig,
     getModels,
+    getSkills,
+    getSkillDetail,
+    searchSkills,
+    installSkill,
   }
 }

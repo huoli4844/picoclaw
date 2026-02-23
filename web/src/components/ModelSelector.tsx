@@ -1,7 +1,7 @@
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Button } from './ui/button'
-import { Settings } from 'lucide-react'
+import { Settings, Package } from 'lucide-react'
 import { Model } from '@/types'
 
 interface ModelSelectorProps {
@@ -9,13 +9,15 @@ interface ModelSelectorProps {
   selectedModel: string
   onModelChange: (model: string) => void
   onOpenSettings: () => void
+  onOpenSkills: () => void
 }
 
 export function ModelSelector({ 
   models, 
   selectedModel, 
   onModelChange, 
-  onOpenSettings 
+  onOpenSettings,
+  onOpenSkills
 }: ModelSelectorProps) {
   return (
     <div className="border-b bg-background p-4">
@@ -35,10 +37,16 @@ export function ModelSelector({
             </SelectContent>
           </Select>
         </div>
-        <Button variant="outline" size="sm" onClick={onOpenSettings}>
-          <Settings className="w-4 h-4 mr-2" />
-          设置
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onOpenSkills}>
+            <Package className="w-4 h-4 mr-2" />
+            技能
+          </Button>
+          <Button variant="outline" size="sm" onClick={onOpenSettings}>
+            <Settings className="w-4 h-4 mr-2" />
+            设置
+          </Button>
+        </div>
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -15,6 +16,8 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/skills"
+	"github.com/sipeed/picoclaw/pkg/tools"
 )
 
 type ChatRequest struct {
@@ -45,9 +48,38 @@ type ModelConfig struct {
 	APIBase   string `json:"api_base,omitempty"`
 }
 
+type SkillInfo struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Source      string `json:"source"`
+	Description string `json:"description"`
+}
+
+type SkillDetail struct {
+	Name        string            `json:"name"`
+	Path        string            `json:"path"`
+	Source      string            `json:"source"`
+	Description string            `json:"description"`
+	Content     string            `json:"content"`
+	Metadata    map[string]string `json:"metadata"`
+}
+
+type SearchSkillsRequest struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit,omitempty"`
+}
+
+type InstallSkillRequest struct {
+	Slug     string `json:"slug"`
+	Registry string `json:"registry"`
+	Version  string `json:"version,omitempty"`
+	Force    bool   `json:"force,omitempty"`
+}
+
 var (
-	cfg       *config.Config
-	agentLoop *agent.AgentLoop
+	cfg          *config.Config
+	agentLoop    *agent.AgentLoop
+	skillsLoader *skills.SkillsLoader
 )
 
 func loadConfig() error {
@@ -73,6 +105,21 @@ func loadConfig() error {
 
 	msgBus := bus.NewMessageBus()
 	agentLoop = agent.NewAgentLoop(cfg, msgBus, provider)
+
+	// Initialize skills loader - 使用与主程序相同的工作空间配置
+	var skillsWorkspace string
+	if cfg != nil && cfg.Agents.Defaults.Workspace != "" {
+		skillsWorkspace = cfg.WorkspacePath()
+		log.Printf("Using configured workspace: %s", skillsWorkspace)
+	} else {
+		// 回退到默认工作空间
+		skillsWorkspace = filepath.Join(home, ".picoclaw", "workspace")
+		log.Printf("Using default workspace: %s", skillsWorkspace)
+	}
+
+	globalSkills := filepath.Join(home, ".picoclaw", "skills")
+	builtinSkills := "./skills"
+	skillsLoader = skills.NewSkillsLoader(skillsWorkspace, globalSkills, builtinSkills)
 
 	return nil
 }
@@ -244,6 +291,225 @@ func modelsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(models)
 }
 
+// 技能相关的处理函数
+func skillsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if skillsLoader == nil {
+		http.Error(w, "Skills loader not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	skillsList := skillsLoader.ListSkills()
+	result := make([]SkillInfo, 0, len(skillsList))
+
+	for _, skill := range skillsList {
+		result = append(result, SkillInfo{
+			Name:        skill.Name,
+			Path:        skill.Path,
+			Source:      skill.Source,
+			Description: skill.Description,
+		})
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func skillDetailHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	skillName := vars["name"]
+
+	if skillsLoader == nil {
+		http.Error(w, "Skills loader not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	skillContent, exists := skillsLoader.LoadSkill(skillName)
+	if !exists {
+		http.Error(w, "Skill not found", http.StatusNotFound)
+		return
+	}
+
+	// 获取技能信息
+	skillsList := skillsLoader.ListSkills()
+	var skillInfo *skills.SkillInfo
+	for _, skill := range skillsList {
+		if skill.Name == skillName {
+			skillInfo = &skill
+			break
+		}
+	}
+
+	if skillInfo == nil {
+		http.Error(w, "Skill not found", http.StatusNotFound)
+		return
+	}
+
+	// 解析元数据
+	metadata := make(map[string]string)
+	if skillContent != "" {
+		lines := strings.Split(skillContent, "\n")
+		inFrontmatter := false
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "---" {
+				if !inFrontmatter {
+					inFrontmatter = true
+					continue
+				} else {
+					break
+				}
+			}
+			if inFrontmatter && strings.Contains(trimmed, ":") {
+				parts := strings.SplitN(trimmed, ":", 2)
+				if len(parts) == 2 {
+					metadata[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+				}
+			}
+		}
+	}
+
+	detail := SkillDetail{
+		Name:        skillInfo.Name,
+		Path:        skillInfo.Path,
+		Source:      skillInfo.Source,
+		Description: skillInfo.Description,
+		Content:     skillContent,
+		Metadata:    metadata,
+	}
+
+	json.NewEncoder(w).Encode(detail)
+}
+
+func searchSkillsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req SearchSkillsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if cfg == nil || cfg.Tools.Skills.Registries.ClawHub.Enabled == false {
+		http.Error(w, "Skills registry not configured", http.StatusNotFound)
+		return
+	}
+
+	// 使用工具搜索技能
+	clawHubConfig := cfg.Tools.Skills.Registries.ClawHub
+	registryConfig := skills.RegistryConfig{
+		ClawHub: skills.ClawHubConfig{
+			Enabled:         clawHubConfig.Enabled,
+			BaseURL:         clawHubConfig.BaseURL,
+			AuthToken:       clawHubConfig.AuthToken,
+			SearchPath:      clawHubConfig.SearchPath,
+			SkillsPath:      clawHubConfig.SkillsPath,
+			DownloadPath:    clawHubConfig.DownloadPath,
+			Timeout:         clawHubConfig.Timeout,
+			MaxZipSize:      clawHubConfig.MaxZipSize,
+			MaxResponseSize: clawHubConfig.MaxResponseSize,
+		},
+		MaxConcurrentSearches: cfg.Tools.Skills.MaxConcurrentSearches,
+	}
+	registryMgr := skills.NewRegistryManagerFromConfig(registryConfig)
+	cache := skills.NewSearchCache(cfg.Tools.Skills.SearchCache.MaxSize, time.Duration(cfg.Tools.Skills.SearchCache.TTLSeconds)*time.Second)
+	findSkillTool := tools.NewFindSkillsTool(registryMgr, cache)
+
+	if req.Limit == 0 {
+		req.Limit = 10
+	}
+
+	ctx := context.Background()
+	result := findSkillTool.Execute(ctx, map[string]interface{}{
+		"query": req.Query,
+		"limit": req.Limit,
+	})
+
+	// 解析搜索结果
+	var searchResults []interface{}
+	if !result.IsError {
+		searchResults = []interface{}{result.ForLLM}
+	} else {
+		searchResults = []interface{}{}
+	}
+
+	response := map[string]interface{}{
+		"query":   req.Query,
+		"results": searchResults,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func installSkillHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req InstallSkillRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 使用工具安装技能
+	clawHubConfig := cfg.Tools.Skills.Registries.ClawHub
+	registryConfig := skills.RegistryConfig{
+		ClawHub: skills.ClawHubConfig{
+			Enabled:         clawHubConfig.Enabled,
+			BaseURL:         clawHubConfig.BaseURL,
+			AuthToken:       clawHubConfig.AuthToken,
+			SearchPath:      clawHubConfig.SearchPath,
+			SkillsPath:      clawHubConfig.SkillsPath,
+			DownloadPath:    clawHubConfig.DownloadPath,
+			Timeout:         clawHubConfig.Timeout,
+			MaxZipSize:      clawHubConfig.MaxZipSize,
+			MaxResponseSize: clawHubConfig.MaxResponseSize,
+		},
+		MaxConcurrentSearches: cfg.Tools.Skills.MaxConcurrentSearches,
+	}
+	registryMgr := skills.NewRegistryManagerFromConfig(registryConfig)
+	installSkillTool := tools.NewInstallSkillTool(registryMgr, ".")
+
+	installParams := map[string]interface{}{
+		"slug":     req.Slug,
+		"registry": req.Registry,
+	}
+
+	if req.Version != "" {
+		installParams["version"] = req.Version
+	}
+	if req.Force {
+		installParams["force"] = req.Force
+	}
+
+	ctx := context.Background()
+	result := installSkillTool.Execute(ctx, installParams)
+
+	var status string
+	var message string
+	if !result.IsError {
+		status = "success"
+		message = "Skill installed successfully"
+	} else {
+		status = "error"
+		message = result.ForLLM
+	}
+
+	response := map[string]interface{}{
+		"status":  status,
+		"message": message,
+		"result":  result.ForLLM,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	// 加载配置
 	if err := loadConfig(); err != nil {
@@ -259,6 +525,12 @@ func main() {
 	api.HandleFunc("/config", updateConfigHandler).Methods("PUT")
 	api.HandleFunc("/chat", chatHandler).Methods("POST")
 	api.HandleFunc("/models", modelsHandler).Methods("GET")
+
+	// 技能相关路由
+	api.HandleFunc("/skills", skillsHandler).Methods("GET")
+	api.HandleFunc("/skills/search", searchSkillsHandler).Methods("POST")
+	api.HandleFunc("/skills/install", installSkillHandler).Methods("POST")
+	api.HandleFunc("/skills/{name}", skillDetailHandler).Methods("GET")
 
 	// 静态文件服务（用于前端构建文件）
 	// 首先尝试服务前端文件，如果不存在则回退到 API
