@@ -67,48 +67,35 @@ func (r *Registry) loadInstalledServers() error {
 
 // SearchServers searches for available MCP servers
 func (r *Registry) SearchServers(req MCPSearchRequest) (*MCPSearchResponse, error) {
-	var results []MCPServer
+	// Search online MCP servers first
+	response, err := SearchMCPServersOnline(req.Query, req.Category, req.Limit, req.Offset)
+	if err != nil {
+		return nil, err
+	}
 
-	// Search in known servers
-	for _, server := range KnownMCPServers {
-		if r.matchesQuery(server, req) {
-			results = append(results, server)
+	// Create a map of installed servers for quick lookup
+	installedServers := make(map[string]*MCPServer)
+	for serverID, server := range r.servers {
+		installedServers[serverID] = server
+	}
+
+	// Update server status based on installation
+	var updatedResults []MCPServer
+	for _, server := range response.Results {
+		if installedServer, exists := installedServers[server.ID]; exists {
+			// This server is installed - use the installed version with full details
+			updatedServer := *installedServer
+			updatedServer.Status = "installed"
+			updatedResults = append(updatedResults, updatedServer)
+		} else {
+			// This server is available for installation
+			server.Status = "available"
+			updatedResults = append(updatedResults, server)
 		}
 	}
 
-	// Apply pagination
-	total := len(results)
-	offset := req.Offset
-	if offset < 0 {
-		offset = 0
-	}
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-
-	if offset >= total {
-		return &MCPSearchResponse{
-			Query:   req.Query,
-			Results: []MCPServer{},
-			Total:   total,
-			Offset:  offset,
-			Limit:   limit,
-		}, nil
-	}
-
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	return &MCPSearchResponse{
-		Query:   req.Query,
-		Results: results[offset:end],
-		Total:   total,
-		Offset:  offset,
-		Limit:   limit,
-	}, nil
+	response.Results = updatedResults
+	return response, nil
 }
 
 // matchesQuery checks if a server matches the search criteria
@@ -186,19 +173,22 @@ func (r *Registry) InstallServer(req MCPInstallRequest) (*MCPInstallResponse, er
 		}, nil
 	}
 
-	// Find server in known servers
-	var serverToInstall *MCPServer
-	for i := range KnownMCPServers {
-		if KnownMCPServers[i].ID == req.ServerID {
-			serverToInstall = &KnownMCPServers[i]
-			break
+	// Try to get server from registry first
+	serverToInstall, err := GetMCPServerFromRegistry(req.ServerID)
+	if err != nil {
+		// Fallback to recommended servers
+		for i := range RecommendedMCPServers {
+			if RecommendedMCPServers[i].ID == req.ServerID {
+				serverToInstall = &RecommendedMCPServers[i]
+				break
+			}
 		}
 	}
 
 	if serverToInstall == nil {
 		return &MCPInstallResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Server %s not found in registry", req.ServerID),
+			Message: fmt.Sprintf("Server %s not found in registry - use mcp-go to discover available servers", req.ServerID),
 		}, nil
 	}
 

@@ -344,6 +344,16 @@ export function McpPage({ onBack }: McpPageProps) {
                       <strong>作者:</strong> {selectedServer.author}
                     </div>
                   )}
+                  {selectedServer.category && (
+                    <div>
+                      <strong>类别:</strong> {selectedServer.category}
+                    </div>
+                  )}
+                  {selectedServer.license && (
+                    <div>
+                      <strong>许可证:</strong> {selectedServer.license}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <strong>描述:</strong><br />
@@ -359,6 +369,32 @@ export function McpPage({ onBack }: McpPageProps) {
                         </Badge>
                       ))}
                     </div>
+                  </div>
+                )}
+                {selectedServer.homepage && (
+                  <div>
+                    <strong>主页:</strong><br />
+                    <a 
+                      href={selectedServer.homepage} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-blue-500 hover:text-blue-700 hover:underline break-all"
+                    >
+                      {selectedServer.homepage}
+                    </a>
+                  </div>
+                )}
+                {selectedServer.repository && (
+                  <div>
+                    <strong>代码仓库:</strong><br />
+                    <a 
+                      href={selectedServer.repository} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-blue-500 hover:text-blue-700 hover:underline break-all"
+                    >
+                      {selectedServer.repository}
+                    </a>
                   </div>
                 )}
               </div>

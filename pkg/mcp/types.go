@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -107,195 +109,248 @@ type MCPConfig struct {
 	StoragePath string              `json:"storage_path"`
 }
 
-// Known MCP servers from official registries
-var KnownMCPServers = []MCPServer{
+// SearchMCPServersOnline searches for MCP servers from online registries
+func SearchMCPServersOnline(query string, category string, limit int, offset int) (*MCPSearchResponse, error) {
+	// TODO: Replace with actual MCP registry API call
+	// This could integrate with:
+	// 1. Official MCP registry API (when available)
+	// 2. GitHub search for MCP servers
+	// 3. npm registry search for @modelcontextprotocol packages
+	// 4. mcp-go discovery API
+
+	// For now, provide a mock implementation with common MCP servers
+	allServers := []MCPServer{
+		{
+			ID:          "filesystem",
+			Name:        "Filesystem MCP Server",
+			Description: "Filesystem operations and file management tools",
+			Version:     "1.0.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"filesystem", "files", "directory", "io"},
+			Category:    "filesystem",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-filesystem"},
+			Status:      "available",
+		},
+		{
+			ID:          "time",
+			Name:        "Time MCP Server",
+			Description: "Time and timezone conversion tools",
+			Version:     "1.0.1",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"time", "date", "timezone", "format"},
+			Category:    "productivity",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-time"},
+			Status:      "available",
+		},
+		{
+			ID:          "git",
+			Name:        "Git MCP Server",
+			Description: "Git version control and repository management",
+			Version:     "1.2.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"git", "version control", "repository", "commit"},
+			Category:    "development",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-git"},
+			Status:      "available",
+		},
+		{
+			ID:          "database",
+			Name:        "Database MCP Server",
+			Description: "Database connections and SQL query execution",
+			Version:     "0.9.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "Apache-2.0",
+			Keywords:    []string{"database", "sql", "mysql", "postgresql", "sqlite"},
+			Category:    "database",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-postgres"},
+			Status:      "available",
+		},
+		{
+			ID:          "web-search",
+			Name:        "Web Search MCP Server",
+			Description: "Web search functionality with multiple search engines",
+			Version:     "2.1.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"web", "search", "google", "bing", "internet"},
+			Category:    "communication",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-brave-search"},
+			Status:      "available",
+		},
+		{
+			ID:          "memory",
+			Name:        "Memory MCP Server",
+			Description: "Persistent memory storage and retrieval",
+			Version:     "1.0.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"memory", "storage", "persistence", "cache"},
+			Category:    "productivity",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-memory"},
+			Status:      "available",
+		},
+		{
+			ID:          "puppeteer",
+			Name:        "Puppeteer MCP Server",
+			Description: "Web automation and browser control tools",
+			Version:     "1.0.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"browser", "automation", "web", "scraping"},
+			Category:    "development",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-puppeteer"},
+			Status:      "available",
+		},
+		{
+			ID:          "slack",
+			Name:        "Slack MCP Server",
+			Description: "Slack integration and messaging tools",
+			Version:     "1.0.0",
+			Author:      "Model Context Protocol",
+			Homepage:    "https://modelcontextprotocol.io",
+			Repository:  "https://github.com/modelcontextprotocol/servers",
+			License:     "MIT",
+			Keywords:    []string{"slack", "messaging", "communication", "chat"},
+			Category:    "communication",
+			Transport:   "stdio",
+			Command:     "npx",
+			Args:        []string{"@modelcontextprotocol/server-slack"},
+			Status:      "available",
+		},
+	}
+
+	// Filter servers based on query and category
+	var filteredServers []MCPServer
+	for _, server := range allServers {
+		matches := true
+
+		// Filter by query text
+		if query != "" {
+			queryLower := strings.ToLower(query)
+			matches = strings.Contains(strings.ToLower(server.Name), queryLower) ||
+				strings.Contains(strings.ToLower(server.Description), queryLower) ||
+				strings.Contains(strings.ToLower(server.ID), queryLower)
+		}
+
+		// Filter by category
+		if matches && category != "" {
+			matches = server.Category == category
+		}
+
+		if matches {
+			// Check if already installed
+			// TODO: Check against installed servers and mark status accordingly
+			filteredServers = append(filteredServers, server)
+		}
+	}
+
+	// Apply pagination
+	total := len(filteredServers)
+	if offset >= total {
+		return &MCPSearchResponse{
+			Query:   query,
+			Results: []MCPServer{},
+			Total:   total,
+			Offset:  offset,
+			Limit:   limit,
+		}, nil
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	return &MCPSearchResponse{
+		Query:   query,
+		Results: filteredServers[offset:end],
+		Total:   total,
+		Offset:  offset,
+		Limit:   limit,
+	}, nil
+}
+
+// GetMCPServerFromRegistry fetches MCP server configuration from external registry
+func GetMCPServerFromRegistry(serverID string) (*MCPServer, error) {
+	// Search the online registry for the specific server
+	response, err := SearchMCPServersOnline("", "", 100, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, server := range response.Results {
+		if server.ID == serverID {
+			return &server, nil
+		}
+	}
+
+	return nil, fmt.Errorf("server %s not found in online registry", serverID)
+}
+
+// RecommendedMCPServers provides a minimal fallback list of well-known servers
+// This should only be used as fallback when external registry is unavailable
+var RecommendedMCPServers = []MCPServer{
 	{
 		ID:          "filesystem",
 		Name:        "Filesystem MCP Server",
-		Description: "提供文件系统操作工具，包括文件读写、目录管理、文件搜索等功能",
+		Description: "Filesystem operations and file management tools",
 		Version:     "1.0.0",
 		Author:      "Model Context Protocol",
-		Homepage:    "https://github.com/modelcontextprotocol/servers",
+		Homepage:    "https://modelcontextprotocol.io",
 		Repository:  "https://github.com/modelcontextprotocol/servers",
 		License:     "MIT",
 		Keywords:    []string{"filesystem", "files", "directory", "io"},
 		Category:    "filesystem",
 		Transport:   "stdio",
-		Command:     "mcp-server-filesystem",
-		Args:        []string{"/Users/huoli4844/Documents/ai_project/picoclaw"},
-		Env:         make(map[string]string),
-		Status:      "available",
-		Tools: []MCPTool{
-			{
-				Name:        "read_file",
-				Description: "读取文件内容",
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"path": map[string]any{
-							"type":        "string",
-							"description": "文件路径",
-						},
-					},
-					"required": []string{"path"},
-				},
-				ServerID: "filesystem",
-			},
-			{
-				Name:        "write_file",
-				Description: "写入文件内容",
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"path": map[string]any{
-							"type":        "string",
-							"description": "文件路径",
-						},
-						"content": map[string]any{
-							"type":        "string",
-							"description": "文件内容",
-						},
-					},
-					"required": []string{"path", "content"},
-				},
-				ServerID: "filesystem",
-			},
-			{
-				Name:        "list_directory",
-				Description: "列出目录内容",
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"path": map[string]any{
-							"type":        "string",
-							"description": "目录路径",
-						},
-					},
-					"required": []string{"path"},
-				},
-				ServerID: "filesystem",
-			},
-		},
-	},
-	{
-		ID:          "git",
-		Name:        "Git MCP Server",
-		Description: "提供Git版本控制工具，支持仓库操作、提交管理、分支管理等功能",
-		Version:     "1.2.0",
-		Author:      "Model Context Protocol",
-		Homepage:    "https://github.com/modelcontextprotocol/servers",
-		Repository:  "https://github.com/modelcontextprotocol/servers",
-		License:     "MIT",
-		Keywords:    []string{"git", "version control", "repository", "commit"},
-		Category:    "development",
-		Transport:   "stdio",
 		Command:     "npx",
-		Args:        []string{"@modelcontextprotocol/server-git"},
-		Env:         make(map[string]string),
+		Args:        []string{"@modelcontextprotocol/server-filesystem"},
 		Status:      "available",
-		Tools: []MCPTool{
-			{
-				Name:        "git_status",
-				Description: "查看Git仓库状态",
-				ServerID:    "git",
-			},
-			{
-				Name:        "git_add",
-				Description: "添加文件到暂存区",
-				ServerID:    "git",
-			},
-			{
-				Name:        "git_commit",
-				Description: "提交更改",
-				ServerID:    "git",
-			},
-			{
-				Name:        "git_push",
-				Description: "推送到远程仓库",
-				ServerID:    "git",
-			},
-		},
-	},
-	{
-		ID:          "database",
-		Name:        "Database MCP Server",
-		Description: "提供数据库操作工具，支持多种数据库连接和SQL查询执行",
-		Version:     "0.9.0",
-		Author:      "MCP Community",
-		Homepage:    "https://github.com/mcp-community/database-server",
-		Repository:  "https://github.com/mcp-community/database-server",
-		License:     "Apache-2.0",
-		Keywords:    []string{"database", "sql", "mysql", "postgresql", "sqlite"},
-		Category:    "database",
-		Transport:   "stdio",
-		Command:     "npx",
-		Args:        []string{"@mcp-community/database-server"},
-		Env:         make(map[string]string),
-		Status:      "available",
-		Tools: []MCPTool{
-			{
-				Name:        "execute_query",
-				Description: "执行SQL查询",
-				ServerID:    "database",
-			},
-			{
-				Name:        "list_tables",
-				Description: "列出数据库表",
-				ServerID:    "database",
-			},
-		},
-	},
-	{
-		ID:          "web-search",
-		Name:        "Web Search MCP Server",
-		Description: "提供网络搜索功能，支持多种搜索引擎和搜索结果解析",
-		Version:     "2.1.0",
-		Author:      "SearchTools",
-		Homepage:    "https://github.com/searchtools/web-search-server",
-		Repository:  "https://github.com/searchtools/web-search-server",
-		License:     "MIT",
-		Keywords:    []string{"web", "search", "google", "bing", "internet"},
-		Category:    "communication",
-		Transport:   "sse",
-		Command:     "",
-		Args:        []string{},
-		Env:         make(map[string]string),
-		Status:      "available",
-		Tools: []MCPTool{
-			{
-				Name:        "search_web",
-				Description: "执行网络搜索",
-				ServerID:    "web-search",
-			},
-		},
 	},
 	{
 		ID:          "time",
 		Name:        "Time MCP Server",
-		Description: "提供时间相关工具，包括时区转换、时间格式化等功能",
+		Description: "Time and timezone conversion tools",
 		Version:     "1.0.1",
-		Author:      "MCP Community",
-		Homepage:    "https://github.com/mcp-community/time-server",
-		Repository:  "https://github.com/mcp-community/time-server",
+		Author:      "Model Context Protocol",
+		Homepage:    "https://modelcontextprotocol.io",
+		Repository:  "https://github.com/modelcontextprotocol/servers",
 		License:     "MIT",
 		Keywords:    []string{"time", "date", "timezone", "format"},
 		Category:    "productivity",
 		Transport:   "stdio",
 		Command:     "npx",
-		Args:        []string{"@mcp-community/time-server"},
-		Env:         make(map[string]string),
+		Args:        []string{"@modelcontextprotocol/server-time"},
 		Status:      "available",
-		Tools: []MCPTool{
-			{
-				Name:        "get_current_time",
-				Description: "获取当前时间",
-				ServerID:    "time",
-			},
-			{
-				Name:        "convert_timezone",
-				Description: "时区转换",
-				ServerID:    "time",
-			},
-		},
 	},
 }

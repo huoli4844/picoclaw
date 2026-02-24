@@ -84,33 +84,43 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
   }
 
   const handleInstall = async (server: McpServer) => {
+    console.log('开始安装MCP服务器:', server.id, server)
     setIsInstalling(server.id)
+    setDebugInfo(`正在安装 ${server.name}...`)
+    
     try {
       const request: McpInstallRequest = {
         serverId: server.id,
         config: server.config
       }
+      console.log('安装请求:', request)
       const result = await installMcpServer(request)
       console.log('Install result:', result)
+      
       if (result.success) {
+        setDebugInfo(`安装成功! 正在验证 ${server.name}...`)
         // Validate installation after successful install
         setIsValidating(server.id)
         const validationResult = await validateMcpServer(server.id)
         console.log('Validation result:', validationResult)
         
         if (validationResult.success) {
+          setDebugInfo(`${server.name} 安装并验证成功!`)
           onServerInstalled()
           // Remove from search results after successful installation and validation
           setSearchResults(prev => (prev || []).filter(s => s.id !== server.id))
         } else {
+          setDebugInfo(`${server.name} 安装成功但验证失败: ${validationResult.error || '未知错误'}`)
           console.error('Validation failed:', validationResult)
           // Still remove from search results, but the validation error will be shown
           onServerInstalled()
         }
       } else {
+        setDebugInfo(`${server.name} 安装失败: ${result.error || '未知错误'}`)
         console.error('Install failed:', result)
       }
     } catch (error) {
+      setDebugInfo(`${server.name} 安装出错: ${error}`)
       console.error('Failed to install MCP server:', error)
     } finally {
       setIsInstalling(null)
