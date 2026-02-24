@@ -42,7 +42,7 @@ echo Step 4: Building with verbose output...
 echo.
 echo Build output:
 echo ============
-go build -v -tags stdjson -o "build\picoclaw.exe" "./cmd\picoclaw"
+go build -v -tags stdjson -o "build\picoclaw.exe" "./cmd/picoclaw"
 if %errorlevel% equ 0 (
     echo.
     echo ✓ Build successful!
