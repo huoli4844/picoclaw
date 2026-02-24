@@ -25,7 +25,7 @@ export function ChatInput({ onSendMessage, isLoading, disabled }: ChatInputProps
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && e.altKey) {
       e.preventDefault()
       handleSubmit(e)
     }
@@ -60,7 +60,7 @@ export function ChatInput({ onSendMessage, isLoading, disabled }: ChatInputProps
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Shift+Enter 换行，Enter 发送)"
+            placeholder="输入消息... (Enter 换行，Alt+Enter 发送)"
             className="flex-1 min-h-[24px] max-h-[120px] resize-none bg-transparent border-none outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 text-sm leading-relaxed"
             disabled={isLoading || disabled}
             rows={1}

@@ -32,6 +32,46 @@ if exist "workspace" (
     echo Workspace files copied successfully
 ) else (
     echo Warning: workspace directory not found
+    echo Creating basic workspace...
+    
+    if not exist "workspace" mkdir "workspace"
+    if not exist "workspace\memory" mkdir "workspace\memory"
+    if not exist "workspace\skills" mkdir "workspace\skills"
+    
+    REM Create basic workspace files
+    echo # User Information > workspace\USER.md
+    echo This file contains your preferences and context information. >> workspace\USER.md
+    echo. >> workspace\USER.md
+    echo ## Preferences >> workspace\USER.md
+    echo - Response style:  >> workspace\USER.md
+    echo - Topics of interest: >> workspace\USER.md
+    echo - Communication preferences: >> workspace\USER.md
+    echo. >> workspace\USER.md
+    echo ## Context >> workspace\USER.md
+    echo Add any context information you want the AI to remember about you. >> workspace\USER.md
+    
+    echo # Agent Information > workspace\AGENT.md
+    echo This file defines the AI agent's characteristics. >> workspace\AGENT.md
+    echo. >> workspace\AGENT.md
+    echo ## Agent Name >> workspace\AGENT.md
+    echo PicoClaw >> workspace\AGENT.md
+    echo. >> workspace\AGENT.md
+    echo ## Personality >> workspace\AGENT.md
+    echo - Helpful and efficient >> workspace\AGENT.md
+    echo - Friendly and professional >> workspace\AGENT.md
+    echo - Focused on accuracy >> workspace\AGENT.md
+    echo. >> workspace\AGENT.md
+    echo ## Capabilities >> workspace\AGENT.md
+    echo - Natural language understanding >> workspace\AGENT.md
+    echo - Code generation >> workspace\AGENT.md
+    echo - Problem solving >> workspace\AGENT.md
+    echo - Creative assistance >> workspace\AGENT.md
+    
+    echo ✅ Basic workspace created
+    
+    REM Now copy the created workspace
+    xcopy /E /I /Y "workspace" "cmd\picoclaw\workspace" >nul 2>&1
+    echo Workspace files copied successfully
 )
 
 echo Step 3: Downloading Go dependencies...

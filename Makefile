@@ -73,6 +73,7 @@ all: build
 generate:
 	@echo "Run generate..."
 	@rm -r ./$(CMD_DIR)/workspace 2>/dev/null || true
+	@cp -r workspace ./$(CMD_DIR)/ 2>/dev/null || echo "Warning: workspace directory not found"
 	@$(GO) generate ./...
 	@echo "Run generate complete"
 
