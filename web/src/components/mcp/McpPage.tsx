@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Server, Plus, Trash2, Loader2, Globe, Terminal, Radio, AlertCircle } from 'lucide-react'
+import { Search, Server, Trash2, Loader2, Globe, Terminal, Radio, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -168,8 +168,8 @@ export function McpPage({ onBack }: McpPageProps) {
                 onClick={() => setIsSearchOpen(true)}
                 className="flex items-center gap-2"
               >
-                <Plus className="w-4 h-4" />
-                安装服务器
+                <Search className="w-4 h-4" />
+                搜索服务器
               </Button>
               <Button variant="outline" onClick={onBack}>
                 返回聊天

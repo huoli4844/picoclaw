@@ -1539,10 +1539,10 @@ func main() {
 
 	// MCP相关路由
 	api.HandleFunc("/mcp/servers", mcpServersHandler).Methods("GET")
-	api.HandleFunc("/mcp/servers/{id}", mcpServerDetailHandler).Methods("GET")
-	api.HandleFunc("/mcp/servers/{id}", mcpUninstallServerHandler).Methods("DELETE")
-	api.HandleFunc("/mcp/servers/{id}/validate", mcpValidateServerHandler).Methods("POST")
-	api.HandleFunc("/mcp/servers/{id}/call", mcpCallToolHandler).Methods("POST")
+	api.HandleFunc("/mcp/servers/{id:.+}", mcpServerDetailHandler).Methods("GET")
+	api.HandleFunc("/mcp/servers/{id:.+}", mcpUninstallServerHandler).Methods("DELETE")
+	api.HandleFunc("/mcp/servers/{id:.+}/validate", mcpValidateServerHandler).Methods("POST")
+	api.HandleFunc("/mcp/servers/{id:.+}/call", mcpCallToolHandler).Methods("POST")
 	api.HandleFunc("/mcp/search", mcpSearchHandler).Methods("POST")
 	api.HandleFunc("/mcp/install", mcpInstallHandler).Methods("POST")
 

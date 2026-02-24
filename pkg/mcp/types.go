@@ -1,7 +1,10 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -109,150 +112,28 @@ type MCPConfig struct {
 	StoragePath string              `json:"storage_path"`
 }
 
-// SearchMCPServersOnline searches for MCP servers from online registries
-func SearchMCPServersOnline(query string, category string, limit int, offset int) (*MCPSearchResponse, error) {
-	// TODO: Replace with actual MCP registry API call
-	// This could integrate with:
-	// 1. Official MCP registry API (when available)
-	// 2. GitHub search for MCP servers
-	// 3. npm registry search for @modelcontextprotocol packages
-	// 4. mcp-go discovery API
+// MCPServerInfo represents the raw data from official MCP registry
+type MCPServerInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Remote      string `json:"remote,omitempty"`
+	Package     string `json:"package,omitempty"`
+	Transport   string `json:"transport,omitempty"`
+}
 
-	// For now, provide a mock implementation with common MCP servers
-	allServers := []MCPServer{
-		{
-			ID:          "filesystem",
-			Name:        "Filesystem MCP Server",
-			Description: "Filesystem operations and file management tools",
-			Version:     "1.0.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"filesystem", "files", "directory", "io"},
-			Category:    "filesystem",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-filesystem"},
-			Status:      "available",
-		},
-		{
-			ID:          "time",
-			Name:        "Time MCP Server",
-			Description: "Time and timezone conversion tools",
-			Version:     "1.0.1",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"time", "date", "timezone", "format"},
-			Category:    "productivity",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-time"},
-			Status:      "available",
-		},
-		{
-			ID:          "git",
-			Name:        "Git MCP Server",
-			Description: "Git version control and repository management",
-			Version:     "1.2.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"git", "version control", "repository", "commit"},
-			Category:    "development",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-git"},
-			Status:      "available",
-		},
-		{
-			ID:          "database",
-			Name:        "Database MCP Server",
-			Description: "Database connections and SQL query execution",
-			Version:     "0.9.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "Apache-2.0",
-			Keywords:    []string{"database", "sql", "mysql", "postgresql", "sqlite"},
-			Category:    "database",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-postgres"},
-			Status:      "available",
-		},
-		{
-			ID:          "web-search",
-			Name:        "Web Search MCP Server",
-			Description: "Web search functionality with multiple search engines",
-			Version:     "2.1.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"web", "search", "google", "bing", "internet"},
-			Category:    "communication",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-brave-search"},
-			Status:      "available",
-		},
-		{
-			ID:          "memory",
-			Name:        "Memory MCP Server",
-			Description: "Persistent memory storage and retrieval",
-			Version:     "1.0.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"memory", "storage", "persistence", "cache"},
-			Category:    "productivity",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-memory"},
-			Status:      "available",
-		},
-		{
-			ID:          "puppeteer",
-			Name:        "Puppeteer MCP Server",
-			Description: "Web automation and browser control tools",
-			Version:     "1.0.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"browser", "automation", "web", "scraping"},
-			Category:    "development",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-puppeteer"},
-			Status:      "available",
-		},
-		{
-			ID:          "slack",
-			Name:        "Slack MCP Server",
-			Description: "Slack integration and messaging tools",
-			Version:     "1.0.0",
-			Author:      "Model Context Protocol",
-			Homepage:    "https://modelcontextprotocol.io",
-			Repository:  "https://github.com/modelcontextprotocol/servers",
-			License:     "MIT",
-			Keywords:    []string{"slack", "messaging", "communication", "chat"},
-			Category:    "communication",
-			Transport:   "stdio",
-			Command:     "npx",
-			Args:        []string{"@modelcontextprotocol/server-slack"},
-			Status:      "available",
-		},
+// SearchMCPServersOnline searches for MCP servers from mcp.json config file
+func SearchMCPServersOnline(query string, category string, limit int, offset int) (*MCPSearchResponse, error) {
+	// Fetch from mcp.json config file
+	servers, err := fetchFromConfigFile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load MCP servers from config: %v", err)
 	}
 
 	// Filter servers based on query and category
 	var filteredServers []MCPServer
-	for _, server := range allServers {
+	for _, server := range servers {
 		matches := true
 
 		// Filter by query text
@@ -269,8 +150,10 @@ func SearchMCPServersOnline(query string, category string, limit int, offset int
 		}
 
 		if matches {
-			// Check if already installed
-			// TODO: Check against installed servers and mark status accordingly
+			// Ensure status is set to available for search results
+			if server.Status == "" {
+				server.Status = "available"
+			}
 			filteredServers = append(filteredServers, server)
 		}
 	}
@@ -299,6 +182,176 @@ func SearchMCPServersOnline(query string, category string, limit int, offset int
 		Offset:  offset,
 		Limit:   limit,
 	}, nil
+}
+
+// fetchFromOfficialRegistry fetches MCP servers from mcp.json config file
+func fetchFromOfficialRegistry() ([]MCPServerInfo, error) {
+	// Try to read from mcp.json in the project directory first
+	configPath := "mcp/mcp.json"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// Fallback to user's home directory
+		configPath = filepath.Join(os.Getenv("HOME"), ".picoclaw", "mcp", "mcp.json")
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read mcp.json: %v", err)
+	}
+
+	var config struct {
+		Servers []MCPServer `json:"servers"`
+		Version string      `json:"version"`
+	}
+
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse mcp.json: %v", err)
+	}
+
+	// Convert MCPServer to MCPServerInfo
+	var registryData []MCPServerInfo
+	for _, server := range config.Servers {
+		info := MCPServerInfo{
+			ID:          server.ID,
+			Name:        server.Name,
+			Version:     server.Version,
+			Description: server.Description,
+			Package:     "",
+			Remote:      "",
+			Transport:   server.Transport,
+		}
+
+		// Extract package or remote from args
+		if len(server.Args) > 0 {
+			if server.Command == "npx" {
+				info.Package = server.Args[0]
+			} else if server.Command == "remote" {
+				info.Remote = server.Args[0]
+			} else if server.Command == "docker" && len(server.Args) >= 2 && server.Args[0] == "run" {
+				info.Package = server.Args[1]
+			}
+		}
+
+		registryData = append(registryData, info)
+	}
+
+	return registryData, nil
+}
+
+// fetchFromConfigFile reads MCP servers from mcp.json config file
+func fetchFromConfigFile() ([]MCPServer, error) {
+	// Try to read from mcp.json in the project directory first
+	configPath := "mcp/mcp.json"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// Fallback to user's home directory
+		configPath = filepath.Join(os.Getenv("HOME"), ".picoclaw", "mcp", "mcp.json")
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read mcp.json: %v", err)
+	}
+
+	var config struct {
+		Servers     []MCPServer `json:"servers"`
+		Version     string      `json:"version"`
+		LastUpdated string      `json:"last_updated"`
+	}
+
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse mcp.json: %v", err)
+	}
+
+	return config.Servers, nil
+}
+
+// createDefaultConfigFile creates a default config file with recommended servers
+func createDefaultConfigFile(configPath string) error {
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	defaultServers := RecommendedMCPServers
+
+	config := map[string]interface{}{
+		"servers":      defaultServers,
+		"version":      "1.0.0",
+		"last_updated": time.Now().Format(time.RFC3339),
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, data, 0644)
+}
+
+// Helper functions for processing registry data
+func generateServerID(name, id string) string {
+	if id != "" {
+		return strings.ReplaceAll(id, "/", "-")
+	}
+	return strings.ToLower(strings.ReplaceAll(strings.Join(strings.Fields(name), "-"), "_", "-"))
+}
+
+func extractKeywords(name, description string) []string {
+	keywords := []string{}
+
+	// Extract from name and description
+	text := strings.ToLower(name + " " + description)
+
+	// Common MCP keywords
+	commonKeywords := []string{"api", "data", "management", "tools", "automation", "integration", "mcp", "server", "remote", "web", "cloud"}
+	for _, keyword := range commonKeywords {
+		if strings.Contains(text, keyword) {
+			keywords = append(keywords, keyword)
+		}
+	}
+
+	return keywords
+}
+
+func categorizeServer(name, description string) string {
+	text := strings.ToLower(name + " " + description)
+
+	// Define categories based on keywords
+	if strings.Contains(text, "database") || strings.Contains(text, "sql") || strings.Contains(text, "storage") {
+		return "database"
+	}
+	if strings.Contains(text, "development") || strings.Contains(text, "code") || strings.Contains(text, "api") || strings.Contains(text, "tools") {
+		return "development"
+	}
+	if strings.Contains(text, "communication") || strings.Contains(text, "messaging") || strings.Contains(text, "chat") || strings.Contains(text, "slack") {
+		return "communication"
+	}
+	if strings.Contains(text, "trading") || strings.Contains(text, "finance") || strings.Contains(text, "portfolio") {
+		return "finance"
+	}
+	if strings.Contains(text, "docs") || strings.Contains(text, "document") || strings.Contains(text, "markdown") {
+		return "productivity"
+	}
+	if strings.Contains(text, "search") || strings.Contains(text, "crawling") || strings.Contains(text, "web") {
+		return "utilities"
+	}
+
+	return "other"
+}
+
+func determineTransport(pkg, remote string) string {
+	if remote != "" {
+		if strings.Contains(remote, "sse") {
+			return "sse"
+		}
+		return "http"
+	}
+	if pkg != "" {
+		if strings.Contains(pkg, "docker.io") {
+			return "docker"
+		}
+		return "stdio"
+	}
+	return "stdio"
 }
 
 // GetMCPServerFromRegistry fetches MCP server configuration from external registry

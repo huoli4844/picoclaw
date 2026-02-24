@@ -192,8 +192,9 @@ func (r *Registry) InstallServer(req MCPInstallRequest) (*MCPInstallResponse, er
 		}, nil
 	}
 
-	// Create server directory
-	serverDir := filepath.Join(r.installedDir, req.ServerID)
+	// Create server directory (replace slashes with dashes to avoid nested directories)
+	safeServerID := strings.ReplaceAll(req.ServerID, "/", "-")
+	serverDir := filepath.Join(r.installedDir, safeServerID)
 	if err := os.MkdirAll(serverDir, 0755); err != nil {
 		return &MCPInstallResponse{
 			Status:  "error",
@@ -286,6 +287,9 @@ func (r *Registry) performActualInstallation(server *MCPServer) *MCPInstallRespo
 		// For mcp-go integration, we don't need to install actual command
 		// Just verify the configuration is valid
 		return r.validateMcpGoServer(server)
+	case server.Command == "remote":
+		// For remote HTTP servers, validate the URL format
+		return r.validateRemoteServer(server)
 	case strings.HasPrefix(server.Command, "python"):
 		// For mcp-go integration, we don't need to actually install python packages
 		return r.validatePythonServer(server)
@@ -410,6 +414,50 @@ func (r *Registry) validateNpxServer(server *MCPServer) *MCPInstallResponse {
 	}
 }
 
+// validateRemoteServer validates remote HTTP server configuration
+func (r *Registry) validateRemoteServer(server *MCPServer) *MCPInstallResponse {
+	fmt.Printf("Validating remote MCP server: %s\n", server.ID)
+
+	// Validate basic server information
+	if server.ID == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Server ID is required",
+		}
+	}
+
+	if server.Name == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Server name is required",
+		}
+	}
+
+	// Validate that we have a remote URL
+	if len(server.Args) == 0 || server.Args[0] == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Remote server requires a URL in args",
+		}
+	}
+
+	remoteURL := server.Args[0]
+
+	// Basic URL validation
+	if !strings.HasPrefix(remoteURL, "http://") && !strings.HasPrefix(remoteURL, "https://") {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Remote URL must start with http:// or https://",
+		}
+	}
+
+	fmt.Printf("Remote MCP server validation successful: %s -> %s\n", server.ID, remoteURL)
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Remote server %s is ready for integration", server.ID),
+	}
+}
+
 // validatePythonServer validates Python-based server configuration for mcp-go integration
 func (r *Registry) validatePythonServer(server *MCPServer) *MCPInstallResponse {
 	fmt.Printf("验证Python服务器: %s\n", server.ID)
@@ -528,6 +576,9 @@ func (r *Registry) verifyServerHealth(server *MCPServer) bool {
 	case server.Command == "mcp-server-filesystem":
 		_, err := exec.LookPath("mcp-server-filesystem")
 		return err == nil
+	case server.Command == "remote":
+		// For remote servers, always assume healthy (URL was validated during installation)
+		return true
 	default:
 		// For other commands, check if they still exist
 		if server.Command != "" {

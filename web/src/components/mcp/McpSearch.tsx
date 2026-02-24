@@ -98,23 +98,30 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
       console.log('Install result:', result)
       
       if (result.success) {
-        setDebugInfo(`安装成功! 正在验证 ${server.name}...`)
-        // Validate installation after successful install
-        setIsValidating(server.id)
-        const validationResult = await validateMcpServer(server.id)
-        console.log('Validation result:', validationResult)
-        
-        if (validationResult.success) {
-          setDebugInfo(`${server.name} 安装并验证成功!`)
-          onServerInstalled()
-          // Remove from search results after successful installation and validation
-          setSearchResults(prev => (prev || []).filter(s => s.id !== server.id))
-        } else {
-          setDebugInfo(`${server.name} 安装成功但验证失败: ${validationResult.error || '未知错误'}`)
-          console.error('Validation failed:', validationResult)
-          // Still remove from search results, but the validation error will be shown
-          onServerInstalled()
-        }
+        setDebugInfo(`${server.name} 安装成功!`)
+        // Give the server a moment to register before validation
+        setTimeout(async () => {
+          setIsValidating(server.id)
+          try {
+            const validationResult = await validateMcpServer(server.id)
+            console.log('Validation result:', validationResult)
+            
+            if (validationResult.success) {
+              setDebugInfo(`${server.name} 安装并验证成功!`)
+            } else {
+              setDebugInfo(`${server.name} 安装成功但验证失败: ${validationResult.error || '未知错误'}`)
+              console.error('Validation failed:', validationResult)
+            }
+          } catch (error) {
+            console.error('Validation error:', error)
+            setDebugInfo(`${server.name} 安装成功但验证时出错: ${error}`)
+          } finally {
+            setIsValidating(null)
+            onServerInstalled()
+            // Remove from search results after installation
+            setSearchResults(prev => (prev || []).filter(s => s.id !== server.id))
+          }
+        }, 1000) // Wait 1 second before validation
       } else {
         setDebugInfo(`${server.name} 安装失败: ${result.error || '未知错误'}`)
         console.error('Install failed:', result)
