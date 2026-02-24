@@ -26,9 +26,12 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
   const [isValidating, setIsValidating] = useState<string | null>(null)
   const { searchMcpServers, installMcpServer, validateMcpServer } = useApi()
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim() && category === 'all' && transport === 'all') return
+  // 添加调试状态
+  const [debugInfo, setDebugInfo] = useState<string>('')
 
+  const handleSearch = async () => {
+    // 允许空搜索，这样可以显示所有可用的MCP服务器
+    console.log('开始搜索MCP服务器...', { searchQuery, category, transport })
     setIsSearching(true)
     try {
       const request: McpSearchRequest = {
@@ -42,14 +45,27 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
       if (result.success && result.data) {
         console.log('Search data:', result.data)
         
-        // 检查数据结构：可能是嵌套的 {data: {results: [...], success: true}}
-        let searchData = result.data
-        if (searchData && 'data' in searchData && (searchData as any).data?.results) {
-          setSearchResults((searchData as any).data.results)
-        } else if (searchData && 'results' in searchData) {
-          setSearchResults((searchData as any).results)
+        // API返回的数据结构: {success: true, data: {data: {query, results: [...]}}}
+        let searchData = result.data as any
+        
+        // 检查是否有嵌套的data结构
+        if (searchData && searchData.data && searchData.data.results) {
+          const results = searchData.data.results
+          console.log('找到嵌套数据结构! 即将设置searchResults:', results)
+          setSearchResults(results)
+          setDebugInfo(`找到 ${results.length} 个结果 (使用嵌套data结构)`)
+          console.log('searchResults设置完成')
+        } else if (searchData && searchData.results) {
+          // 兼容直接的数据结构
+          const results = searchData.results
+          console.log('找到直接数据结构! 即将设置searchResults:', results)
+          setSearchResults(results)
+          setDebugInfo(`找到 ${results.length} 个结果 (使用直接data结构)`)
+          console.log('searchResults设置完成')
         } else {
-          console.warn('Unexpected search data structure:', searchData)
+          console.log('条件失败! 进入else分支')
+          console.log('完整数据结构:', JSON.stringify(searchData, null, 2))
+          setDebugInfo(`意外的数据结构: ${JSON.stringify(searchData, null, 2)}`)
           setSearchResults([])
         }
       } else {
@@ -60,7 +76,10 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
       console.error('Failed to search MCP servers:', error)
       setSearchResults([])
     } finally {
-      setIsSearching(false)
+      // 添加延迟确保状态更新完成
+      setTimeout(() => {
+        setIsSearching(false)
+      }, 100)
     }
   }
 
@@ -167,6 +186,56 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                 )}
                 搜索
               </Button>
+              <Button 
+                onClick={() => {
+                  console.log('测试数据设置 - 开始')
+                  const testData = [{
+                    id: "filesystem",
+                    name: "Filesystem MCP Server",
+                    description: "提供文件系统操作工具，包括文件读写、目录管理、文件搜索等功能",
+                    version: "1.0.0",
+                    author: "Model Context Protocol",
+                    homepage: "https://github.com/modelcontextprotocol/servers",
+                    repository: "https://github.com/modelcontextprotocol/servers",
+                    license: "MIT",
+                    keywords: ["filesystem", "files", "directory", "io"],
+                    category: "filesystem",
+                    transport: "stdio" as const,
+                    command: "mcp-server-filesystem",
+                    args: ["/Users/huoli4844/Documents/ai_project/picoclaw"],
+                    status: "available" as const,
+                    tools: [
+                      {
+                        name: "read_file",
+                        description: "读取文件内容",
+                        inputSchema: {
+                          type: "object",
+                          properties: {
+                            path: {
+                              type: "string",
+                              description: "文件路径"
+                            }
+                          },
+                          required: ["path"]
+                        },
+                        serverId: "filesystem"
+                      }
+                    ]
+                  }]
+                  console.log('设置前 - searchResults:', searchResults)
+                  setSearchResults(testData)
+                  setDebugInfo(`测试数据设置成功 - ${testData.length} 个结果`)
+                  console.log('设置后 - 应该有数据了')
+                  // 强制重新渲染
+                  setTimeout(() => {
+                    console.log('延迟检查 - searchResults:', searchResults)
+                  }, 100)
+                }}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                测试数据
+              </Button>
             </div>
             
             {/* Filters */}
@@ -203,6 +272,12 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
           {/* Search Results */}
           <ScrollArea className="flex-1">
             <div className="space-y-3">
+              {(() => {
+                console.log('渲染阶段 - searchResults:', searchResults)
+                console.log('渲染阶段 - isSearching:', isSearching)
+                return null
+              })()}
+              
               {(!searchResults || searchResults.length === 0) && !isSearching && (
                 <div className="flex items-center justify-center h-32 text-muted-foreground">
                   <div className="text-center">
@@ -284,9 +359,17 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
         </div>
 
           <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-muted-foreground">
-              搜索到 {(searchResults || []).length} 个结果
-            </p>
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                搜索到 {(searchResults || []).length} 个结果
+              </p>
+              {debugInfo && (
+                <details className="text-xs text-muted-foreground">
+                  <summary>调试信息</summary>
+                  <pre className="whitespace-pre-wrap break-all">{debugInfo}</pre>
+                </details>
+              )}
+            </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>
               关闭

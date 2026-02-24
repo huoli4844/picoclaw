@@ -25,6 +25,17 @@ export function McpPage({ onBack }: McpPageProps) {
   const [isUninstalling, setIsUninstalling] = useState<string | null>(null)
   const { getMcpServers, uninstallMcpServer } = useApi()
 
+  // 为了调试，在window上暴露一个函数来打开搜索对话框
+  useEffect(() => {
+    (window as any).openMcpSearch = () => {
+      console.log('打开MCP搜索对话框')
+      setIsSearchOpen(true)
+    }
+    return () => {
+      delete (window as any).openMcpSearch
+    }
+  }, [])
+
   const loadServers = async () => {
     setIsLoading(true)
     try {
