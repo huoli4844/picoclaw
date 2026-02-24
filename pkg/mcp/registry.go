@@ -212,8 +212,12 @@ func (r *Registry) InstallServer(req MCPInstallRequest) (*MCPInstallResponse, er
 	}
 
 	// Perform actual installation based on server type
+	fmt.Printf("开始安装服务器 %s (命令: %s)\n", serverToInstall.ID, serverToInstall.Command)
 	installResp := r.performActualInstallation(serverToInstall)
+	fmt.Printf("安装结果: %s - %s\n", installResp.Status, installResp.Message)
+
 	if installResp.Status != "success" {
+		fmt.Printf("安装失败，清理目录: %s\n", serverDir)
 		// Clean up directory if installation failed
 		os.RemoveAll(serverDir)
 		return installResp, nil
@@ -281,16 +285,20 @@ func (r *Registry) UninstallServer(serverID string) error {
 
 // performActualInstallation performs the real installation of MCP server
 func (r *Registry) performActualInstallation(server *MCPServer) *MCPInstallResponse {
+	fmt.Printf("执行安装 - 服务器ID: %s, 命令: %s\n", server.ID, server.Command)
+
 	switch {
 	case server.Command == "npx":
-		// Install npm package
-		return r.installNpmPackage(server)
+		// For mcp-go integration, we don't need to actually install npm packages
+		// Just validate the configuration is valid for npx-based servers
+		return r.validateNpxServer(server)
 	case server.Command == "mcp-server-filesystem":
-		// Check if filesystem server is available
-		return r.checkFilesystemServer(server)
+		// For mcp-go integration, we don't need to install actual command
+		// Just verify the configuration is valid
+		return r.validateMcpGoServer(server)
 	case strings.HasPrefix(server.Command, "python"):
-		// Install Python package
-		return r.installPythonPackage(server)
+		// For mcp-go integration, we don't need to actually install python packages
+		return r.validatePythonServer(server)
 	default:
 		// For other commands, just verify they exist
 		return r.verifyCommandAvailability(server)
@@ -299,86 +307,135 @@ func (r *Registry) performActualInstallation(server *MCPServer) *MCPInstallRespo
 
 // installNpmPackage installs an npm package using npm or yarn
 func (r *Registry) installNpmPackage(server *MCPServer) *MCPInstallResponse {
-	// Check if npm is available
-	if _, err := exec.LookPath("npm"); err != nil {
+	// For mcp-go integration, redirect to validation
+	return r.validateNpxServer(server)
+}
+
+// validateMcpGoServer validates server configuration for mcp-go integration
+func (r *Registry) validateMcpGoServer(server *MCPServer) *MCPInstallResponse {
+	fmt.Printf("Validating MCP server for mcp-go integration: %s\n", server.ID)
+
+	// For mcp-go integration, we don't need actual command line tools
+	// Just validate the configuration is complete and reasonable
+
+	if server.ID == "" {
 		return &MCPInstallResponse{
 			Status:  "error",
-			Message: "npm is not available on this system. Please install Node.js and npm first.",
+			Message: "Server ID is required",
 		}
 	}
 
-	// Extract package name from args
-	var packageName string
-	if len(server.Args) > 0 {
-		packageName = server.Args[0]
-	}
-
-	if packageName == "" {
+	if server.Name == "" {
 		return &MCPInstallResponse{
 			Status:  "error",
-			Message: "Could not determine npm package name from server configuration",
+			Message: "Server name is required",
 		}
 	}
 
-	fmt.Printf("Installing npm package: %s\n", packageName)
+	if len(server.Tools) == 0 {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Server must have at least one tool defined",
+		}
+	}
 
-	// Install the package globally using npm
-	cmd := exec.Command("npm", "install", "-g", packageName)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		// Try with yarn as fallback
-		fmt.Printf("npm install failed, trying with yarn...\n")
-		cmd = exec.Command("yarn", "global", "add", packageName)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+	// For filesystem server, validate the args (should contain the directory path)
+	if server.ID == "filesystem" {
+		if len(server.Args) == 0 || server.Args[0] == "" {
 			return &MCPInstallResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("Failed to install npm package %s: %v", packageName, err),
+				Message: "Filesystem server requires a directory path in args",
+			}
+		}
+
+		// Check if the directory exists
+		if _, err := os.Stat(server.Args[0]); err != nil {
+			return &MCPInstallResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Directory not found: %s", server.Args[0]),
 			}
 		}
 	}
 
-	// Verify the package is available
-	if err := r.verifyNpxCommand(packageName); err != nil {
-		return &MCPInstallResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Package installed but verification failed: %v", err),
-		}
-	}
-
+	fmt.Printf("MCP server validation successful: %s\n", server.ID)
 	return &MCPInstallResponse{
 		Status:  "success",
-		Message: fmt.Sprintf("npm package %s installed successfully", packageName),
+		Message: fmt.Sprintf("Server %s is ready for mcp-go integration", server.ID),
 	}
 }
 
-// checkFilesystemServer checks if the filesystem server is available
+// checkFilesystemServer checks if the filesystem server is available (legacy method)
 func (r *Registry) checkFilesystemServer(server *MCPServer) *MCPInstallResponse {
-	// Check if mcp-server-filesystem command is available
-	if _, err := exec.LookPath("mcp-server-filesystem"); err != nil {
+	// For mcp-go integration, redirect to new validation method
+	return r.validateMcpGoServer(server)
+}
+
+// validateNpxServer validates npx-based server configuration for mcp-go integration
+func (r *Registry) validateNpxServer(server *MCPServer) *MCPInstallResponse {
+	fmt.Printf("验证npx服务器: %s\n", server.ID)
+
+	// Basic validation
+	if server.ID == "" {
 		return &MCPInstallResponse{
 			Status:  "error",
-			Message: "mcp-server-filesystem command not found. Please install it first: npm install -g mcp-server-filesystem",
+			Message: "Server ID is required",
 		}
 	}
 
-	// Try to run the command with --help to verify it works
-	cmd := exec.Command("mcp-server-filesystem", "--help")
-	if err := cmd.Run(); err != nil {
-		// Some servers don't support --help, try version
-		cmd = exec.Command("mcp-server-filesystem", "--version")
-		if err := cmd.Run(); err != nil {
-			// If both fail, that's okay - some servers don't have these flags
-			fmt.Printf("Warning: Could not verify filesystem server, but command exists\n")
+	if server.Name == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Server name is required",
 		}
 	}
 
+	if len(server.Args) == 0 {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "npx server requires package name in args",
+		}
+	}
+
+	packageName := server.Args[0]
+	if packageName == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Package name cannot be empty",
+		}
+	}
+
+	// For mcp-go integration, we don't need to check if npm is available
+	// Just validate the package name format
+	if !strings.Contains(packageName, "@") && !strings.Contains(packageName, "/") {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid npm package format: %s", packageName),
+		}
+	}
+
+	fmt.Printf("npx服务器验证成功: %s -> %s\n", server.ID, packageName)
 	return &MCPInstallResponse{
 		Status:  "success",
-		Message: "mcp-server-filesystem is available",
+		Message: fmt.Sprintf("Server %s is ready for mcp-go integration (npx: %s)", server.ID, packageName),
+	}
+}
+
+// validatePythonServer validates Python-based server configuration for mcp-go integration
+func (r *Registry) validatePythonServer(server *MCPServer) *MCPInstallResponse {
+	fmt.Printf("验证Python服务器: %s\n", server.ID)
+
+	// Basic validation
+	if server.ID == "" || server.Name == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Server ID and name are required",
+		}
+	}
+
+	fmt.Printf("Python服务器验证成功: %s\n", server.ID)
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Server %s is ready for mcp-go integration (Python)", server.ID),
 	}
 }
 
