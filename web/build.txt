@@ -1,0 +1,51 @@
+@echo off
+REM Web Frontend Batch Script for Windows
+
+if "%1"=="" goto help
+if "%1"=="install" goto install
+if "%1"=="dev" goto dev
+if "%1"=="build" goto build
+if "%1"=="clean" goto clean
+if "%1"=="help" goto help
+goto unknown
+
+:install
+echo Installing dependencies...
+call npm install
+goto end
+
+:dev
+echo Starting development server...
+call npm run dev
+goto end
+
+:build
+echo Building for production...
+call npm run build
+goto end
+
+:clean
+echo Cleaning build files...
+if exist "dist" (
+    rmdir /s /q "dist"
+    echo Build files cleaned successfully.
+) else (
+    echo No dist directory found.
+)
+goto end
+
+:help
+echo Available commands:
+echo   install  - Install dependencies
+echo   dev      - Start development server
+echo   build    - Build for production
+echo   clean    - Clean build files
+echo   help     - Show this help message
+goto end
+
+:unknown
+echo Unknown command: %1
+echo Use '%0 help' to see available commands.
+goto end
+
+:end

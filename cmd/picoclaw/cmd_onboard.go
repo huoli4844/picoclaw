@@ -13,7 +13,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
-//go:generate cp -r ../../workspace .
+// Note: workspace files are copied by build scripts before go:embed
 //go:embed workspace
 var embeddedFiles embed.FS
 
