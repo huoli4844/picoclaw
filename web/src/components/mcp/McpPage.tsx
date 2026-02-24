@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Server, Plus, Settings, Trash2, Loader2, Globe, Terminal, Radio } from 'lucide-react'
+import { Search, Server, Plus, Trash2, Loader2, Globe, Terminal, Radio, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useApi } from '@/hooks/useApi'
 import { McpServer } from '@/types'
 import { McpSearch } from './McpSearch'
+import { McpToolTester } from './McpToolTester'
 
 interface McpPageProps {
   onBack: () => void
@@ -34,8 +35,8 @@ export function McpPage({ onBack }: McpPageProps) {
         
         // 检查数据结构：可能是嵌套的 {data: {data: [...], success: true}}
         let serversData = result.data
-        if (serversData.data && Array.isArray(serversData.data)) {
-          serversData = serversData.data
+        if (serversData && 'data' in serversData && Array.isArray((serversData as any).data)) {
+          serversData = (serversData as any).data
         }
         
         console.log('Final servers data:', serversData)
@@ -303,30 +304,36 @@ export function McpPage({ onBack }: McpPageProps) {
         onServerInstalled={handleServerInstalled}
       />
 
-      {/* Server Detail Dialog - 可以在后续实现 */}
+      {/* Server Detail Dialog with Tool Testing */}
       {selectedServer && (
         <AlertDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-          <AlertDialogContent className="max-w-2xl">
+          <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 {getTransportIcon(selectedServer.transport)}
                 {selectedServer.name}
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-left space-y-2">
-                <div>
-                  <strong>ID:</strong> {selectedServer.id}
-                </div>
-                <div>
-                  <strong>版本:</strong> {selectedServer.version}
-                </div>
-                <div>
-                  <strong>传输方式:</strong> {selectedServer.transport}
-                </div>
-                {selectedServer.author && (
+            </AlertDialogHeader>
+            
+            <div className="flex flex-col h-[60vh]">
+              {/* Server Info Section */}
+              <div className="flex-shrink-0 space-y-2 text-sm text-left mb-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <strong>作者:</strong> {selectedServer.author}
+                    <strong>ID:</strong> {selectedServer.id}
                   </div>
-                )}
+                  <div>
+                    <strong>版本:</strong> {selectedServer.version}
+                  </div>
+                  <div>
+                    <strong>传输方式:</strong> {selectedServer.transport}
+                  </div>
+                  {selectedServer.author && (
+                    <div>
+                      <strong>作者:</strong> {selectedServer.author}
+                    </div>
+                  )}
+                </div>
                 <div>
                   <strong>描述:</strong><br />
                   {selectedServer.description}
@@ -343,21 +350,26 @@ export function McpPage({ onBack }: McpPageProps) {
                     </div>
                   </div>
                 )}
-                {selectedServer.tools && selectedServer.tools.length > 0 && (
-                  <div>
-                    <strong>可用工具:</strong><br />
-                    <div className="space-y-1 mt-1">
-                      {selectedServer.tools.map((tool, index) => (
-                        <div key={index} className="text-sm bg-muted p-2 rounded">
-                          <div className="font-medium">{tool.name}</div>
-                          <div className="text-xs text-muted-foreground">{tool.description}</div>
-                        </div>
-                      ))}
+              </div>
+
+              {/* Tool Testing Section */}
+              <div className="flex-1 min-h-0">
+                <ScrollArea className="h-full">
+                  {selectedServer.tools && selectedServer.tools.length > 0 ? (
+                    <McpToolTester
+                      serverId={selectedServer.id}
+                      tools={selectedServer.tools}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                      <p>该 MCP 服务器没有提供可用工具</p>
                     </div>
-                  </div>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+                  )}
+                </ScrollArea>
+              </div>
+            </div>
+
             <AlertDialogFooter>
               <AlertDialogAction onClick={() => setIsDetailOpen(false)}>
                 关闭

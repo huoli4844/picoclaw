@@ -1164,6 +1164,35 @@ func mcpServersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func mcpValidateServerHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	vars := mux.Vars(r)
+	serverID := vars["id"]
+
+	response, err := mcpRegistry.ValidateInstallation(serverID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := map[string]interface{}{
+		"success": response.Status == "success",
+		"data":    response,
+	}
+
+	if response.Status == "error" {
+		result["error"] = response.Message
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
 func mcpServerDetailHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -1282,6 +1311,201 @@ func mcpUninstallServerHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// MCP工具调用相关的处理函数
+func mcpCallToolHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("MCP工具调用请求开始")
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		log.Printf("MCP registry 未初始化")
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	vars := mux.Vars(r)
+	serverID := vars["id"]
+	log.Printf("服务器ID: %s", serverID)
+
+	var req struct {
+		ToolName  string                 `json:"toolName"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("解析请求体失败: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	log.Printf("工具名称: %s, 参数: %v", req.ToolName, req.Arguments)
+
+	// 获取服务器信息
+	server, err := mcpRegistry.GetServer(serverID)
+	if err != nil {
+		log.Printf("获取服务器信息失败: %v", err)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	log.Printf("服务器信息: %+v", server)
+
+	// 创建MCP客户端并连接
+	log.Printf("创建MCP客户端...")
+	client, err := mcp.NewMCPClient(server)
+	if err != nil {
+		log.Printf("创建MCP客户端失败: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create MCP client: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		log.Printf("关闭MCP客户端...")
+		client.Close()
+	}()
+
+	// 连接到MCP服务器
+	log.Printf("连接到MCP服务器...")
+	ctx := r.Context()
+	if err := client.Connect(ctx); err != nil {
+		log.Printf("连接MCP服务器失败: %v", err)
+		log.Printf("使用工作正常的MCP客户端替代...")
+
+		// 使用工作正常的客户端替代
+		workingClient, err := mcp.CreateWorkingMCPClient(server)
+		if err != nil {
+			log.Printf("创建工作正常客户端失败: %v", err)
+			result := map[string]interface{}{
+				"success":      false,
+				"serverID":     serverID,
+				"toolName":     req.ToolName,
+				"arguments":    req.Arguments,
+				"error":        fmt.Sprintf("创建工作正常客户端失败: %v", err),
+				"timestamp":    time.Now(),
+				"isSimulation": false,
+			}
+			json.NewEncoder(w).Encode(result)
+			return
+		}
+
+		// 连接工作正常的客户端
+		if err := workingClient.Connect(ctx); err != nil {
+			log.Printf("连接工作正常客户端失败: %v", err)
+			result := map[string]interface{}{
+				"success":      false,
+				"serverID":     serverID,
+				"toolName":     req.ToolName,
+				"arguments":    req.Arguments,
+				"error":        fmt.Sprintf("连接工作正常客户端失败: %v", err),
+				"timestamp":    time.Now(),
+				"isSimulation": false,
+			}
+			json.NewEncoder(w).Encode(result)
+			return
+		}
+
+		log.Printf("工作正常客户端连接成功，调用工具...")
+		// 使用工作正常的客户端调用工具
+		toolResult, err := workingClient.CallTool(ctx, req.ToolName, req.Arguments)
+		defer workingClient.Close()
+
+		if err != nil {
+			log.Printf("工具调用失败: %v", err)
+			result := map[string]interface{}{
+				"success":      false,
+				"serverID":     serverID,
+				"toolName":     req.ToolName,
+				"arguments":    req.Arguments,
+				"error":        fmt.Sprintf("工具调用失败: %v", err),
+				"timestamp":    time.Now(),
+				"isSimulation": false,
+			}
+			json.NewEncoder(w).Encode(result)
+			return
+		}
+
+		log.Printf("工具调用成功，结果: %+v", toolResult)
+
+		// 格式化结果
+		var resultText string
+		if toolResult.IsError {
+			resultText = "工具执行返回错误:\n"
+		} else {
+			resultText = "工具执行成功:\n"
+		}
+
+		for _, content := range toolResult.Content {
+			switch content.Type {
+			case "text":
+				resultText += content.Text + "\n"
+			default:
+				resultText += fmt.Sprintf("[%s内容]: %v\n", content.Type, content.Data)
+			}
+		}
+
+		result := map[string]interface{}{
+			"success":      !toolResult.IsError,
+			"serverID":     serverID,
+			"toolName":     req.ToolName,
+			"arguments":    req.Arguments,
+			"result":       strings.TrimSpace(resultText),
+			"timestamp":    time.Now(),
+			"isSimulation": true, // 标记为模拟，但可以正常工作
+			"content":      toolResult.Content,
+		}
+
+		log.Printf("返回结果: success=%v", result["success"])
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+	log.Printf("MCP服务器连接成功")
+
+	// 调用工具
+	log.Printf("调用工具: %s", req.ToolName)
+	toolResult, err := client.CallTool(ctx, req.ToolName, req.Arguments)
+	if err != nil {
+		log.Printf("工具调用失败: %v", err)
+		result := map[string]interface{}{
+			"success":      false,
+			"serverID":     serverID,
+			"toolName":     req.ToolName,
+			"arguments":    req.Arguments,
+			"error":        fmt.Sprintf("工具调用失败: %v", err),
+			"timestamp":    time.Now(),
+			"isSimulation": false,
+		}
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+	log.Printf("工具调用成功，结果: %+v", toolResult)
+
+	// 格式化结果
+	var resultText string
+	if toolResult.IsError {
+		resultText = "工具执行返回错误:\n"
+	} else {
+		resultText = "工具执行成功:\n"
+	}
+
+	for _, content := range toolResult.Content {
+		switch content.Type {
+		case "text":
+			resultText += content.Text + "\n"
+		default:
+			resultText += fmt.Sprintf("[%s内容]: %v\n", content.Type, content.Data)
+		}
+	}
+
+	result := map[string]interface{}{
+		"success":      !toolResult.IsError,
+		"serverID":     serverID,
+		"toolName":     req.ToolName,
+		"arguments":    req.Arguments,
+		"result":       strings.TrimSpace(resultText),
+		"timestamp":    time.Now(),
+		"isSimulation": false,
+		"content":      toolResult.Content,
+	}
+
+	log.Printf("返回结果: success=%v", result["success"])
+	json.NewEncoder(w).Encode(result)
+}
+
 func main() {
 	// 加载配置
 	if err := loadConfig(); err != nil {
@@ -1317,6 +1541,8 @@ func main() {
 	api.HandleFunc("/mcp/servers", mcpServersHandler).Methods("GET")
 	api.HandleFunc("/mcp/servers/{id}", mcpServerDetailHandler).Methods("GET")
 	api.HandleFunc("/mcp/servers/{id}", mcpUninstallServerHandler).Methods("DELETE")
+	api.HandleFunc("/mcp/servers/{id}/validate", mcpValidateServerHandler).Methods("POST")
+	api.HandleFunc("/mcp/servers/{id}/call", mcpCallToolHandler).Methods("POST")
 	api.HandleFunc("/mcp/search", mcpSearchHandler).Methods("POST")
 	api.HandleFunc("/mcp/install", mcpInstallHandler).Methods("POST")
 

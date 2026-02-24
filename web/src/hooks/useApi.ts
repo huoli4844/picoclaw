@@ -15,7 +15,8 @@ import {
   McpSearchRequest,
   McpSearchResponse,
   McpInstallRequest,
-  McpInstallResponse
+  McpInstallResponse,
+  McpValidationResponse
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
@@ -236,6 +237,19 @@ export function useApi() {
     return request<McpServer>(`/mcp/servers/${serverId}`)
   }, [request])
 
+  const validateMcpServer = useCallback(async (serverId: string): Promise<ApiResponse<McpValidationResponse>> => {
+    return request<McpValidationResponse>(`/mcp/servers/${serverId}/validate`, {
+      method: 'POST',
+    })
+  }, [request])
+
+  const callMcpTool = useCallback(async (serverId: string, toolName: string, toolArguments: any): Promise<ApiResponse<any>> => {
+    return request<any>(`/mcp/servers/${serverId}/call`, {
+      method: 'POST',
+      body: JSON.stringify({ toolName, arguments: toolArguments }),
+    })
+  }, [request])
+
   return {
     isLoading,
     request,
@@ -254,5 +268,7 @@ export function useApi() {
     installMcpServer,
     uninstallMcpServer,
     getMcpServerDetail,
+    validateMcpServer,
+    callMcpTool,
   }
 }

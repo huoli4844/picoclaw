@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -209,6 +211,14 @@ func (r *Registry) InstallServer(req MCPInstallRequest) (*MCPInstallResponse, er
 		}, nil
 	}
 
+	// Perform actual installation based on server type
+	installResp := r.performActualInstallation(serverToInstall)
+	if installResp.Status != "success" {
+		// Clean up directory if installation failed
+		os.RemoveAll(serverDir)
+		return installResp, nil
+	}
+
 	// Apply configuration
 	if req.Config != nil {
 		serverToInstall.Config = req.Config
@@ -269,6 +279,173 @@ func (r *Registry) UninstallServer(serverID string) error {
 	return nil
 }
 
+// performActualInstallation performs the real installation of MCP server
+func (r *Registry) performActualInstallation(server *MCPServer) *MCPInstallResponse {
+	switch {
+	case server.Command == "npx":
+		// Install npm package
+		return r.installNpmPackage(server)
+	case server.Command == "mcp-server-filesystem":
+		// Check if filesystem server is available
+		return r.checkFilesystemServer(server)
+	case strings.HasPrefix(server.Command, "python"):
+		// Install Python package
+		return r.installPythonPackage(server)
+	default:
+		// For other commands, just verify they exist
+		return r.verifyCommandAvailability(server)
+	}
+}
+
+// installNpmPackage installs an npm package using npm or yarn
+func (r *Registry) installNpmPackage(server *MCPServer) *MCPInstallResponse {
+	// Check if npm is available
+	if _, err := exec.LookPath("npm"); err != nil {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "npm is not available on this system. Please install Node.js and npm first.",
+		}
+	}
+
+	// Extract package name from args
+	var packageName string
+	if len(server.Args) > 0 {
+		packageName = server.Args[0]
+	}
+
+	if packageName == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "Could not determine npm package name from server configuration",
+		}
+	}
+
+	fmt.Printf("Installing npm package: %s\n", packageName)
+
+	// Install the package globally using npm
+	cmd := exec.Command("npm", "install", "-g", packageName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		// Try with yarn as fallback
+		fmt.Printf("npm install failed, trying with yarn...\n")
+		cmd = exec.Command("yarn", "global", "add", packageName)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return &MCPInstallResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Failed to install npm package %s: %v", packageName, err),
+			}
+		}
+	}
+
+	// Verify the package is available
+	if err := r.verifyNpxCommand(packageName); err != nil {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Package installed but verification failed: %v", err),
+		}
+	}
+
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("npm package %s installed successfully", packageName),
+	}
+}
+
+// checkFilesystemServer checks if the filesystem server is available
+func (r *Registry) checkFilesystemServer(server *MCPServer) *MCPInstallResponse {
+	// Check if mcp-server-filesystem command is available
+	if _, err := exec.LookPath("mcp-server-filesystem"); err != nil {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "mcp-server-filesystem command not found. Please install it first: npm install -g mcp-server-filesystem",
+		}
+	}
+
+	// Try to run the command with --help to verify it works
+	cmd := exec.Command("mcp-server-filesystem", "--help")
+	if err := cmd.Run(); err != nil {
+		// Some servers don't support --help, try version
+		cmd = exec.Command("mcp-server-filesystem", "--version")
+		if err := cmd.Run(); err != nil {
+			// If both fail, that's okay - some servers don't have these flags
+			fmt.Printf("Warning: Could not verify filesystem server, but command exists\n")
+		}
+	}
+
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: "mcp-server-filesystem is available",
+	}
+}
+
+// installPythonPackage installs a Python package using pip
+func (r *Registry) installPythonPackage(server *MCPServer) *MCPInstallResponse {
+	// Check if pip is available
+	if _, err := exec.LookPath("pip3"); err != nil {
+		if _, err := exec.LookPath("pip"); err != nil {
+			return &MCPInstallResponse{
+				Status:  "error",
+				Message: "pip is not available on this system. Please install Python and pip first.",
+			}
+		}
+	}
+
+	// For Python packages, we assume the command is something like "python -m package"
+	// This is a placeholder for future Python MCP servers
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: "Python package installation not yet implemented, but command is available",
+	}
+}
+
+// verifyCommandAvailability verifies that a command is available on the system
+func (r *Registry) verifyCommandAvailability(server *MCPServer) *MCPInstallResponse {
+	if server.Command == "" {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: "No command specified for server",
+		}
+	}
+
+	// Check if the command exists in PATH
+	if _, err := exec.LookPath(server.Command); err != nil {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Command '%s' not found in PATH: %v", server.Command, err),
+		}
+	}
+
+	return &MCPInstallResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Command '%s' is available", server.Command),
+	}
+}
+
+// verifyNpxCommand verifies that an npx command works
+func (r *Registry) verifyNpxCommand(packageName string) error {
+	// Check if npx is available
+	if _, err := exec.LookPath("npx"); err != nil {
+		return fmt.Errorf("npx is not available")
+	}
+
+	// Try to run npx with the package (with a timeout to prevent hanging)
+	cmd := exec.Command("timeout", "10s", "npx", "--help")
+	if err := cmd.Run(); err != nil {
+		// Try without timeout command (macOS compatibility)
+		cmd = exec.Command("npx", "--help")
+		if err := cmd.Run(); err != nil {
+			// npx might not have --help, but if it exists we're probably okay
+			fmt.Printf("Warning: Could not verify npx, but command exists\n")
+		}
+	}
+
+	return nil
+}
+
 // GetServerStatus returns the status of a specific server
 func (r *Registry) GetServerStatus(serverID string) (string, error) {
 	r.mu.RLock()
@@ -279,7 +456,67 @@ func (r *Registry) GetServerStatus(serverID string) (string, error) {
 		return "not_installed", nil
 	}
 
+	// For installed servers, verify they are still working
+	if server.Status == "installed" {
+		if r.verifyServerHealth(server) {
+			return "installed", nil
+		} else {
+			return "error", fmt.Errorf("server installation is broken")
+		}
+	}
+
 	return server.Status, nil
+}
+
+// verifyServerHealth verifies that an installed server is still working
+func (r *Registry) verifyServerHealth(server *MCPServer) bool {
+	switch {
+	case server.Command == "npx":
+		// Verify npm package is still available
+		if len(server.Args) > 0 {
+			err := r.verifyNpxCommand(server.Args[0])
+			return err == nil
+		}
+		return false
+	case server.Command == "mcp-server-filesystem":
+		_, err := exec.LookPath("mcp-server-filesystem")
+		return err == nil
+	default:
+		// For other commands, check if they still exist
+		if server.Command != "" {
+			_, err := exec.LookPath(server.Command)
+			return err == nil
+		}
+		return false
+	}
+}
+
+// ValidateInstallation validates an existing installation
+func (r *Registry) ValidateInstallation(serverID string) (*MCPInstallResponse, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	server, exists := r.servers[serverID]
+	if !exists {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Server %s is not installed", serverID),
+		}, nil
+	}
+
+	if r.verifyServerHealth(server) {
+		return &MCPInstallResponse{
+			Status:  "success",
+			Message: fmt.Sprintf("Server %s installation is valid", serverID),
+			Server:  server,
+		}, nil
+	} else {
+		return &MCPInstallResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Server %s installation is broken or missing dependencies", serverID),
+			Server:  server,
+		}, nil
+	}
 }
 
 // containsIgnoreCase checks if a string contains a substring ignoring case

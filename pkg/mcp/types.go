@@ -121,8 +121,8 @@ var KnownMCPServers = []MCPServer{
 		Keywords:    []string{"filesystem", "files", "directory", "io"},
 		Category:    "filesystem",
 		Transport:   "stdio",
-		Command:     "npx",
-		Args:        []string{"@modelcontextprotocol/server-filesystem", "/tmp"},
+		Command:     "mcp-server-filesystem",
+		Args:        []string{"/Users/huoli4844/Documents/ai_project/picoclaw"},
 		Env:         make(map[string]string),
 		Status:      "available",
 		Tools: []MCPTool{

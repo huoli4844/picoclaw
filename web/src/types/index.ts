@@ -125,6 +125,7 @@ export interface McpTool {
   description: string;
   inputSchema?: Record<string, any>;
   serverId: string;
+  category?: string;
 }
 
 export interface McpResource {
@@ -154,6 +155,12 @@ export interface McpInstallRequest {
 }
 
 export interface McpInstallResponse {
+  status: 'success' | 'error';
+  message: string;
+  server?: McpServer;
+}
+
+export interface McpValidationResponse {
   status: 'success' | 'error';
   message: string;
   server?: McpServer;

@@ -23,7 +23,8 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
   const [searchResults, setSearchResults] = useState<McpServer[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isInstalling, setIsInstalling] = useState<string | null>(null)
-  const { searchMcpServers, installMcpServer } = useApi()
+  const [isValidating, setIsValidating] = useState<string | null>(null)
+  const { searchMcpServers, installMcpServer, validateMcpServer } = useApi()
 
   const handleSearch = async () => {
     if (!searchQuery.trim() && category === 'all' && transport === 'all') return
@@ -43,10 +44,10 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
         
         // 检查数据结构：可能是嵌套的 {data: {results: [...], success: true}}
         let searchData = result.data
-        if (searchData.data && searchData.data.results) {
-          setSearchResults(searchData.data.results)
-        } else if (searchData.results) {
-          setSearchResults(searchData.results)
+        if (searchData && 'data' in searchData && (searchData as any).data?.results) {
+          setSearchResults((searchData as any).data.results)
+        } else if (searchData && 'results' in searchData) {
+          setSearchResults((searchData as any).results)
         } else {
           console.warn('Unexpected search data structure:', searchData)
           setSearchResults([])
@@ -73,9 +74,20 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
       const result = await installMcpServer(request)
       console.log('Install result:', result)
       if (result.success) {
-        onServerInstalled()
-        // Remove from search results after successful installation
-        setSearchResults(prev => (prev || []).filter(s => s.id !== server.id))
+        // Validate installation after successful install
+        setIsValidating(server.id)
+        const validationResult = await validateMcpServer(server.id)
+        console.log('Validation result:', validationResult)
+        
+        if (validationResult.success) {
+          onServerInstalled()
+          // Remove from search results after successful installation and validation
+          setSearchResults(prev => (prev || []).filter(s => s.id !== server.id))
+        } else {
+          console.error('Validation failed:', validationResult)
+          // Still remove from search results, but the validation error will be shown
+          onServerInstalled()
+        }
       } else {
         console.error('Install failed:', result)
       }
@@ -83,6 +95,7 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
       console.error('Failed to install MCP server:', error)
     } finally {
       setIsInstalling(null)
+      setIsValidating(null)
     }
   }
 
@@ -231,15 +244,16 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                       <Button
                         size="sm"
                         onClick={() => handleInstall(server)}
-                        disabled={isInstalling === server.id || server.status === 'installed'}
+                        disabled={isInstalling === server.id || isValidating === server.id || server.status === 'installed'}
                         className="flex items-center gap-1"
                       >
-                        {isInstalling === server.id ? (
+                        {(isInstalling === server.id || isValidating === server.id) ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
                           <Download className="w-4 h-4" />
                         )}
                         {isInstalling === server.id ? '安装中...' : 
+                         isValidating === server.id ? '验证中...' :
                          server.status === 'installed' ? '已安装' : '安装'}
                       </Button>
                     </div>
