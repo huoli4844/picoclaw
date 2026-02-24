@@ -1,9 +1,9 @@
 
-import { Brain, Settings, Package, MessageSquare, Github } from 'lucide-react'
+import { Brain, Settings, Package, MessageSquare, Github, Server } from 'lucide-react'
 
 interface SidebarProps {
-  currentView: 'chat' | 'skills' | 'settings'
-  onViewChange: (view: 'chat' | 'skills' | 'settings') => void
+  currentView: 'chat' | 'skills' | 'settings' | 'mcp'
+  onViewChange: (view: 'chat' | 'skills' | 'settings' | 'mcp') => void
   isSidebarOpen: boolean
   onSidebarToggle: () => void
 }
@@ -13,6 +13,7 @@ export function Sidebar({ currentView, onViewChange, isSidebarOpen, onSidebarTog
   const menuItems = [
     { id: 'chat', label: '对话', icon: MessageSquare },
     { id: 'skills', label: '技能', icon: Package },
+    { id: 'mcp', label: 'MCP', icon: Server },
     { id: 'settings', label: '设置', icon: Settings },
   ]
 

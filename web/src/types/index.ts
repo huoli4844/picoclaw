@@ -97,3 +97,64 @@ export interface InstallSkillResponse {
   message: string;
   result?: string;
 }
+
+// MCP-related interfaces
+export interface McpServer {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author?: string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+  keywords?: string[];
+  category?: string;
+  transport: 'stdio' | 'sse' | 'websocket';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  status: 'installed' | 'available' | 'error';
+  config?: Record<string, any>;
+  tools?: McpTool[];
+  resources?: McpResource[];
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema?: Record<string, any>;
+  serverId: string;
+}
+
+export interface McpResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+  serverId: string;
+}
+
+export interface McpSearchRequest {
+  query: string;
+  category?: string;
+  transport?: string;
+  limit?: number;
+}
+
+export interface McpSearchResponse {
+  query: string;
+  results: McpServer[];
+  total: number;
+}
+
+export interface McpInstallRequest {
+  serverId: string;
+  config?: Record<string, any>;
+}
+
+export interface McpInstallResponse {
+  status: 'success' | 'error';
+  message: string;
+  server?: McpServer;
+}

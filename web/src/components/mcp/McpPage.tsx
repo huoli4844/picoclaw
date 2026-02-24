@@ -1,0 +1,371 @@
+import { useState, useEffect } from 'react'
+import { Search, Server, Plus, Settings, Trash2, Loader2, Globe, Terminal, Radio } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { useApi } from '@/hooks/useApi'
+import { McpServer } from '@/types'
+import { McpSearch } from './McpSearch'
+
+interface McpPageProps {
+  onBack: () => void
+}
+
+export function McpPage({ onBack }: McpPageProps) {
+  const [servers, setServers] = useState<McpServer[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [selectedServer, setSelectedServer] = useState<McpServer | null>(null)
+  const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isUninstalling, setIsUninstalling] = useState<string | null>(null)
+  const { getMcpServers, uninstallMcpServer } = useApi()
+
+  const loadServers = async () => {
+    setIsLoading(true)
+    try {
+      const result = await getMcpServers()
+      console.log('MCP servers result:', result)
+      if (result.success && result.data) {
+        console.log('MCP servers data:', result.data)
+        
+        // 检查数据结构：可能是嵌套的 {data: {data: [...], success: true}}
+        let serversData = result.data
+        if (serversData.data && Array.isArray(serversData.data)) {
+          serversData = serversData.data
+        }
+        
+        console.log('Final servers data:', serversData)
+        console.log('Is array?', Array.isArray(serversData))
+        
+        // 确保数据是数组
+        if (Array.isArray(serversData)) {
+          setServers(serversData)
+        } else {
+          console.warn('MCP servers data is not an array:', typeof serversData)
+          setServers([])
+        }
+      } else {
+        console.warn('MCP servers API response unsuccessful:', result)
+        setServers([])
+      }
+    } catch (error) {
+      console.error('Failed to load MCP servers:', error)
+      setServers([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadServers()
+  }, [])
+
+  const filteredServers = (servers || []).filter(server =>
+    server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    server.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    server.id.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const handleServerClick = (server: McpServer) => {
+    setSelectedServer(server)
+    setIsDetailOpen(true)
+  }
+
+  const handleServerInstalled = () => {
+    loadServers()
+    setIsSearchOpen(false)
+  }
+
+  const handleUninstall = async (serverId: string) => {
+    setIsUninstalling(serverId)
+    try {
+      const result = await uninstallMcpServer(serverId)
+      if (result.success) {
+        loadServers()
+        if (selectedServer?.id === serverId) {
+          setIsDetailOpen(false)
+          setSelectedServer(null)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to uninstall MCP server:', error)
+    } finally {
+      setIsUninstalling(null)
+    }
+  }
+
+  const getTransportIcon = (transport: string) => {
+    switch (transport) {
+      case 'stdio':
+        return <Terminal className="w-4 h-4" />
+      case 'sse':
+        return <Globe className="w-4 h-4" />
+      case 'websocket':
+        return <Radio className="w-4 h-4" />
+      default:
+        return <Server className="w-4 h-4" />
+    }
+  }
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'installed':
+        return 'default'
+      case 'available':
+        return 'secondary'
+      case 'error':
+        return 'destructive'
+      default:
+        return 'outline'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'installed':
+        return '已安装'
+      case 'available':
+        return '可用'
+      case 'error':
+        return '错误'
+      default:
+        return status
+    }
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Server className="w-8 h-8 text-primary" />
+              <div>
+                <h1 className="text-xl font-semibold">MCP 服务器管理</h1>
+                <p className="text-sm text-muted-foreground">管理 Model Context Protocol 服务器</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsSearchOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                安装服务器
+              </Button>
+              <Button variant="outline" onClick={onBack}>
+                返回聊天
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Search Bar */}
+      <div className="border-b p-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="搜索 MCP 服务器..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Servers List */}
+      <ScrollArea className="flex-1">
+        <div className="max-w-6xl mx-auto p-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span>加载服务器列表...</span>
+              </div>
+            </div>
+          ) : !servers || !Array.isArray(servers) ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-muted-foreground">
+                <Server className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>无法加载 MCP 服务器列表</p>
+                <p className="text-sm mt-2">请检查后端服务是否正常运行</p>
+              </div>
+            </div>
+          ) : filteredServers.length === 0 ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-muted-foreground">
+                <Server className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>暂无 MCP 服务器</p>
+                <p className="text-sm mt-2">点击"安装服务器"来添加新的 MCP 服务器</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredServers.map((server) => (
+                <Card 
+                  key={server.id} 
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => handleServerClick(server)}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <CardTitle className="text-lg">{server.name}</CardTitle>
+                          {getTransportIcon(server.transport)}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <Badge variant={getStatusBadgeVariant(server.status)}>
+                            {getStatusText(server.status)}
+                          </Badge>
+                          <Badge variant="outline">{server.version}</Badge>
+                          <Badge variant="outline">{server.transport}</Badge>
+                          {server.category && (
+                            <Badge variant="outline">{server.category}</Badge>
+                          )}
+                        </div>
+                        {server.author && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {server.author}
+                          </p>
+                        )}
+                      </div>
+                      {server.status === 'installed' && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                              }}
+                            >
+                              {isUninstalling === server.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>确认卸载</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                确定要卸载 MCP 服务器 "{server.name}" 吗？此操作不可撤销。
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleUninstall(server.id)}
+                                disabled={isUninstalling === server.id}
+                              >
+                                {isUninstalling === server.id ? '卸载中...' : '确认卸载'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription className="line-clamp-3">
+                      {server.description}
+                    </CardDescription>
+                    {server.tools && server.tools.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-muted-foreground">
+                          提供 {server.tools.length} 个工具
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* MCP Search Dialog */}
+      <McpSearch
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onServerInstalled={handleServerInstalled}
+      />
+
+      {/* Server Detail Dialog - 可以在后续实现 */}
+      {selectedServer && (
+        <AlertDialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+          <AlertDialogContent className="max-w-2xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                {getTransportIcon(selectedServer.transport)}
+                {selectedServer.name}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-left space-y-2">
+                <div>
+                  <strong>ID:</strong> {selectedServer.id}
+                </div>
+                <div>
+                  <strong>版本:</strong> {selectedServer.version}
+                </div>
+                <div>
+                  <strong>传输方式:</strong> {selectedServer.transport}
+                </div>
+                {selectedServer.author && (
+                  <div>
+                    <strong>作者:</strong> {selectedServer.author}
+                  </div>
+                )}
+                <div>
+                  <strong>描述:</strong><br />
+                  {selectedServer.description}
+                </div>
+                {selectedServer.keywords && selectedServer.keywords.length > 0 && (
+                  <div>
+                    <strong>关键词:</strong><br />
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {selectedServer.keywords.map((keyword, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {keyword}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedServer.tools && selectedServer.tools.length > 0 && (
+                  <div>
+                    <strong>可用工具:</strong><br />
+                    <div className="space-y-1 mt-1">
+                      {selectedServer.tools.map((tool, index) => (
+                        <div key={index} className="text-sm bg-muted p-2 rounded">
+                          <div className="font-medium">{tool.name}</div>
+                          <div className="text-xs text-muted-foreground">{tool.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction onClick={() => setIsDetailOpen(false)}>
+                关闭
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </div>
+  )
+}

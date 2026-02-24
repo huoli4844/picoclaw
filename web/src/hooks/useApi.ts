@@ -10,7 +10,12 @@ import {
   SearchSkillsRequest, 
   InstallSkillRequest,
   SearchSkillsResponse,
-  InstallSkillResponse 
+  InstallSkillResponse,
+  McpServer,
+  McpSearchRequest,
+  McpSearchResponse,
+  McpInstallRequest,
+  McpInstallResponse
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
@@ -202,6 +207,35 @@ export function useApi() {
     })
   }, [request])
 
+  // MCP-related API methods
+  const getMcpServers = useCallback(async (): Promise<ApiResponse<McpServer[]>> => {
+    return request<McpServer[]>('/mcp/servers')
+  }, [request])
+
+  const searchMcpServers = useCallback(async (requestObj: McpSearchRequest): Promise<ApiResponse<McpSearchResponse>> => {
+    return request<McpSearchResponse>('/mcp/search', {
+      method: 'POST',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
+  const installMcpServer = useCallback(async (requestObj: McpInstallRequest): Promise<ApiResponse<McpInstallResponse>> => {
+    return request<McpInstallResponse>('/mcp/install', {
+      method: 'POST',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
+  const uninstallMcpServer = useCallback(async (serverId: string): Promise<ApiResponse> => {
+    return request(`/mcp/servers/${serverId}`, {
+      method: 'DELETE',
+    })
+  }, [request])
+
+  const getMcpServerDetail = useCallback(async (serverId: string): Promise<ApiResponse<McpServer>> => {
+    return request<McpServer>(`/mcp/servers/${serverId}`)
+  }, [request])
+
   return {
     isLoading,
     request,
@@ -214,5 +248,11 @@ export function useApi() {
     getSkillDetail,
     searchSkills,
     installSkill,
+    // MCP methods
+    getMcpServers,
+    searchMcpServers,
+    installMcpServer,
+    uninstallMcpServer,
+    getMcpServerDetail,
   }
 }

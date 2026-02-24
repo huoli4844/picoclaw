@@ -6,6 +6,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SkillsPage } from './components/skills/SkillsPage'
+import { McpPage } from './components/mcp/McpPage'
 import { ScrollArea } from './components/ui/scroll-area'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useApi } from './hooks/useApi'
@@ -16,7 +17,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
-  const [currentView, setCurrentView] = useState<'chat' | 'skills' | 'settings'>('chat')
+  const [currentView, setCurrentView] = useState<'chat' | 'skills' | 'settings' | 'mcp'>('chat')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   
@@ -216,6 +217,14 @@ function App() {
     return (
       <ThemeProvider>
         <SkillsPage onBack={() => setCurrentView('chat')} />
+      </ThemeProvider>
+    )
+  }
+
+  if (currentView === 'mcp') {
+    return (
+      <ThemeProvider>
+        <McpPage onBack={() => setCurrentView('chat')} />
       </ThemeProvider>
     )
   }

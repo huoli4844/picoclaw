@@ -18,6 +18,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/mcp"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -450,7 +451,8 @@ var (
 	cfg               *config.Config
 	agentLoop         *agent.AgentLoop
 	skillsLoader      *skills.SkillsLoader
-	skillsWorkspace   string                               // 工作区路径
+	skillsWorkspace   string // 工作区路径
+	mcpRegistry       *mcp.Registry
 	thoughtCollectors = make(map[string]*ThoughtCollector) // sessionKey -> ThoughtCollector
 	muThoughts        sync.RWMutex
 	logAdapters       = make(map[string]*LogEntryAdapter) // sessionKey -> LogEntryAdapter
@@ -1139,11 +1141,161 @@ func installSkillHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// MCP相关的处理函数
+func mcpServersHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	servers, err := mcpRegistry.GetInstalledServers()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    servers,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func mcpServerDetailHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	vars := mux.Vars(r)
+	serverID := vars["id"]
+
+	server, err := mcpRegistry.GetServer(serverID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"data":    server,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func mcpSearchHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req mcp.MCPSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Set default values
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+
+	response, err := mcpRegistry.SearchServers(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := map[string]interface{}{
+		"success": true,
+		"data":    response,
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func mcpInstallHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	var req mcp.MCPInstallRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	response, err := mcpRegistry.InstallServer(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := map[string]interface{}{
+		"success": response.Status == "success",
+		"data":    response,
+	}
+
+	if response.Status == "error" {
+		result["error"] = response.Message
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func mcpUninstallServerHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if mcpRegistry == nil {
+		http.Error(w, "MCP registry not initialized", http.StatusServiceUnavailable)
+		return
+	}
+
+	vars := mux.Vars(r)
+	serverID := vars["id"]
+
+	err := mcpRegistry.UninstallServer(serverID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Server %s uninstalled successfully", serverID),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	// 加载配置
 	if err := loadConfig(); err != nil {
 		log.Printf("Warning: Failed to load config: %v", err)
 		// 继续运行，但功能可能受限
+	}
+
+	// 初始化MCP注册表
+	home, _ := os.UserHomeDir()
+	mcpStoragePath := filepath.Join(home, ".picoclaw", "mcp")
+	var err error
+	mcpRegistry, err = mcp.NewRegistry("", mcpStoragePath)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize MCP registry: %v", err)
 	}
 
 	r := mux.NewRouter()
@@ -1160,6 +1312,13 @@ func main() {
 	api.HandleFunc("/skills/search", searchSkillsHandler).Methods("POST")
 	api.HandleFunc("/skills/install", installSkillHandler).Methods("POST")
 	api.HandleFunc("/skills/{name}", skillDetailHandler).Methods("GET")
+
+	// MCP相关路由
+	api.HandleFunc("/mcp/servers", mcpServersHandler).Methods("GET")
+	api.HandleFunc("/mcp/servers/{id}", mcpServerDetailHandler).Methods("GET")
+	api.HandleFunc("/mcp/servers/{id}", mcpUninstallServerHandler).Methods("DELETE")
+	api.HandleFunc("/mcp/search", mcpSearchHandler).Methods("POST")
+	api.HandleFunc("/mcp/install", mcpInstallHandler).Methods("POST")
 
 	// 静态文件服务（用于前端构建文件）
 	// 首先尝试服务前端文件，如果不存在则回退到 API
