@@ -1348,7 +1348,7 @@ func mcpCallToolHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 创建MCP客户端并连接
 	log.Printf("创建MCP客户端...")
-	client, err := mcp.NewMCPClient(server)
+	clientInterface, err := mcp.NewMCPClient(server)
 	if err != nil {
 		log.Printf("创建MCP客户端失败: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to create MCP client: %v", err), http.StatusInternalServerError)
@@ -1356,13 +1356,13 @@ func mcpCallToolHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() {
 		log.Printf("关闭MCP客户端...")
-		client.Close()
+		clientInterface.Close()
 	}()
 
 	// 连接到MCP服务器
 	log.Printf("连接到MCP服务器...")
 	ctx := r.Context()
-	if err := client.Connect(ctx); err != nil {
+	if err := clientInterface.Connect(ctx); err != nil {
 		log.Printf("连接MCP服务器失败: %v", err)
 		log.Printf("使用工作正常的MCP客户端替代...")
 
@@ -1457,7 +1457,7 @@ func mcpCallToolHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 调用工具
 	log.Printf("调用工具: %s", req.ToolName)
-	toolResult, err := client.CallTool(ctx, req.ToolName, req.Arguments)
+	toolResult, err := clientInterface.CallTool(ctx, req.ToolName, req.Arguments)
 	if err != nil {
 		log.Printf("工具调用失败: %v", err)
 		result := map[string]interface{}{

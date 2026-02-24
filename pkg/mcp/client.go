@@ -75,7 +75,19 @@ type WebSocketClient struct {
 }
 
 // NewMCPClient creates a new MCP client for the given server
-func NewMCPClient(server *MCPServer) (*MCPClient, error) {
+func NewMCPClient(server *MCPServer) (interface {
+	Connect(ctx context.Context) error
+	CallTool(ctx context.Context, toolName string, arguments map[string]interface{}) (*ToolCallResult, error)
+	Close() error
+}, error) {
+	// 优先使用 mcp-go 客户端
+	if mcpClient, err := NewMCPGoClient(server); err == nil {
+		fmt.Printf("使用 mcp-go 客户端\n")
+		return mcpClient, nil
+	}
+
+	// 降级到自定义客户端
+	fmt.Printf("降级使用自定义客户端\n")
 	client := &MCPClient{
 		serverID:    server.ID,
 		command:     server.Command,
@@ -84,7 +96,6 @@ func NewMCPClient(server *MCPServer) (*MCPClient, error) {
 		transport:   server.Transport,
 		pendingReqs: make(map[int64]chan *JSONRPCResponse),
 	}
-
 	return client, nil
 }
 
