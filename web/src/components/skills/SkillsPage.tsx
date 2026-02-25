@@ -118,7 +118,6 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
                 <p className="text-sm text-muted-foreground">管理 PicoClaw 技能</p>
               </div>
             </div>
-            </div>
             <div className="flex items-center gap-2">
               <div className="relative mr-2">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
