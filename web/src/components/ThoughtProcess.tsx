@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Brain, Wrench, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react'
 import { Button } from './ui/button'
-import { ScrollArea } from './ui/scroll-area'
+import { ScrollArea, ScrollBar } from './ui/scroll-area'
 import { MarkdownRenderer } from './ui/markdown-renderer'
 import { Thought } from '@/types'
 
@@ -132,7 +132,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
 
       {isExpanded && (
         <ScrollArea className="h-64 border-t">
-          <div className="p-4 space-y-2">
+          <div className="p-4 space-y-2 min-w-max">
             {thoughts.map((thought, index) => (
               <div
                 key={index}
@@ -177,6 +177,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
               </div>
             ))}
           </div>
+          <ScrollBar orientation="horizontal" />
         </ScrollArea>
       )}
     </div>

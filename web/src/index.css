@@ -197,11 +197,11 @@
 
 /* AI思考过程样式 */
 .thought-process-container {
-  @apply max-w-[80%] break-words;
+  @apply max-w-[100%] break-words;
 }
 
 .thought-item-content {
-  @apply max-w-full overflow-hidden;
+  @apply max-w-full overflow-x-auto;
 }
 
 .thought-code-block {
