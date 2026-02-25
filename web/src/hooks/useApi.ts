@@ -37,12 +37,29 @@ export function useApi() {
         ...options,
       })
 
-      const data = await response.json()
+      let data
+      let responseText = ''
+      try {
+        data = await response.json()
+      } catch {
+        // 如果响应不是 JSON 格式，需要先读取文本，然后才能解析状态
+        // 但由于response.text()也只能读取一次，我们需要在这里处理
+        if (!response.ok) {
+          return {
+            success: false,
+            error: `HTTP error! status: ${response.status}`,
+          }
+        }
+        return {
+          success: true,
+          data: responseText as T,
+        }
+      }
 
       if (!response.ok) {
         return {
           success: false,
-          error: data.error || `HTTP error! status: ${response.status}`,
+          error: data.error || data.message || `HTTP error! status: ${response.status}`,
         }
       }
 
@@ -208,6 +225,12 @@ export function useApi() {
     })
   }, [request])
 
+  const uninstallSkill = useCallback(async (name: string): Promise<ApiResponse> => {
+    return request(`/skills/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    })
+  }, [request])
+
   // MCP-related API methods
   const getMcpServers = useCallback(async (): Promise<ApiResponse<McpServer[]>> => {
     return request<McpServer[]>('/mcp/servers')
@@ -266,6 +289,7 @@ export function useApi() {
     getSkillDetail,
     searchSkills,
     installSkill,
+    uninstallSkill,
     // MCP methods
     getMcpServers,
     getMcpSources,

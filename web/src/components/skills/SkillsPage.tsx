@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, Package, Plus, Eye, Loader2 } from 'lucide-react'
+import { Search, Package, Plus, Eye, Trash2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useApi } from '@/hooks/useApi'
 import { Skill } from '@/types'
 import { SkillsSearch } from './SkillsSearch'
@@ -21,7 +22,10 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const { getSkills } = useApi()
+  const [skillToDelete, setSkillToDelete] = useState<Skill | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const { getSkills, uninstallSkill } = useApi()
 
   const loadSkills = async () => {
     setIsLoading(true)
@@ -54,6 +58,38 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
   const handleSkillInstalled = () => {
     loadSkills()
     setIsSearchOpen(false)
+  }
+
+  const handleDeleteSkill = (skill: Skill) => {
+    setSkillToDelete(skill)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteSkill = async () => {
+    if (!skillToDelete) return
+    
+    setIsDeleting(true)
+    try {
+      const result = await uninstallSkill(skillToDelete.name)
+      if (result.success) {
+        await loadSkills() // 重新加载技能列表
+        setIsDeleteDialogOpen(false)
+        setSkillToDelete(null)
+      } else {
+        console.error('Failed to uninstall skill:', result.error)
+        // 这里可以添加错误提示
+      }
+    } catch (error) {
+      console.error('Error uninstalling skill:', error)
+      // 这里可以添加错误提示
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const cancelDeleteSkill = () => {
+    setIsDeleteDialogOpen(false)
+    setSkillToDelete(null)
   }
 
   const getSourceBadgeVariant = (source: string) => {
@@ -148,16 +184,31 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
                           {skill.source}
                         </Badge>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleSkillClick(skill)
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleSkillClick(skill)
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        {skill.source !== 'builtin' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteSkill(skill)
+                            }}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -188,6 +239,41 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
         onClose={() => setIsSearchOpen(false)}
         onSkillInstalled={handleSkillInstalled}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除技能</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除技能 "<span className="font-semibold">{skillToDelete?.name}</span>" 吗？
+              <br />
+              <span className="text-sm text-muted-foreground">
+                此操作将删除技能文件且不可恢复。
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelDeleteSkill} disabled={isDeleting}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSkill}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  删除中...
+                </>
+              ) : (
+                '删除'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

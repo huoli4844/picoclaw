@@ -960,6 +960,62 @@ func skillDetailHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(detail)
 }
 
+func uninstallSkillHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Uninstall skill request received: %s %s", r.Method, r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	skillName := vars["name"]
+	log.Printf("Skill name from URL: %s", skillName)
+
+	if skillsLoader == nil {
+		log.Printf("Skills loader not initialized")
+		http.Error(w, "Skills loader not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	// 检查技能是否存在
+	skillsList := skillsLoader.ListSkills()
+	log.Printf("Available skills: %v", skillsList)
+	var skillInfo *skills.SkillInfo
+	for _, skill := range skillsList {
+		if skill.Name == skillName {
+			skillInfo = &skill
+			break
+		}
+	}
+
+	if skillInfo == nil {
+		log.Printf("Skill not found: %s", skillName)
+		http.Error(w, "Skill not found", http.StatusNotFound)
+		return
+	}
+
+	// 不能删除内置技能
+	if skillInfo.Source == "builtin" {
+		log.Printf("Attempt to delete builtin skill: %s", skillName)
+		http.Error(w, "Cannot delete builtin skills", http.StatusForbidden)
+		return
+	}
+
+	// 使用技能安装器删除技能
+	skillInstaller := skills.NewSkillInstaller(skillsWorkspace)
+	if err := skillInstaller.Uninstall(skillName); err != nil {
+		log.Printf("Failed to uninstall skill %s: %v", skillName, err)
+		http.Error(w, fmt.Sprintf("Failed to uninstall skill: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Successfully uninstalled skill: %s", skillName)
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Skill %s uninstalled successfully", skillName),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func searchSkillsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -1553,6 +1609,7 @@ func main() {
 	api.HandleFunc("/skills/search", searchSkillsHandler).Methods("POST")
 	api.HandleFunc("/skills/install", installSkillHandler).Methods("POST")
 	api.HandleFunc("/skills/{name}", skillDetailHandler).Methods("GET")
+	api.HandleFunc("/skills/{name}", uninstallSkillHandler).Methods("DELETE")
 
 	// MCP相关路由
 	api.HandleFunc("/mcp/servers", mcpServersHandler).Methods("GET")
