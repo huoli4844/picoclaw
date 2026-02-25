@@ -3,7 +3,6 @@ import { ConversationTabs } from './ConversationTabs'
 import { ChatMessage } from '../ChatMessage'
 import { ChatInput } from '../ChatInput'
 import { TypingIndicator } from '../TypingIndicator'
-import { ScrollArea } from '../ui/scroll-area'
 import { Brain } from 'lucide-react'
 
 import { Conversation, Message } from '../../types/conversation'
@@ -38,7 +37,7 @@ export function MultiChat({
   }
 
   return (
-    <div className="flex flex-col h-screen relative">
+    <div className="flex flex-col h-screen">
       {/* 对话标签 */}
       <div className="flex-shrink-0">
         <ConversationTabs
@@ -51,39 +50,37 @@ export function MultiChat({
         />
       </div>
 
-      {/* 消息区域 */}
-      <div className="flex-1 overflow-hidden relative pb-20">
-        <ScrollArea className="h-full">
-          <div className="chat-messages w-full px-4 py-4">
-            {activeConversation?.messages.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                <div className="text-center">
-                  <div className="relative mb-6">
-                    <Brain className="w-16 h-16 mx-auto text-primary opacity-20" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-4 h-4 bg-primary rounded-full animate-ping" />
-                    </div>
-                  </div>
-                  <h2 className="text-2xl font-semibold mb-2">开始对话吧！</h2>
-                  <p className="text-muted-foreground mb-4">我是 PicoClaw，您的智能 AI 助手</p>
-                  <div className="flex flex-wrap justify-center gap-2 text-sm">
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">📝 内容创作</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">💻 编程助手</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🔍 数据分析</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🎨 创意设计</span>
+      {/* 消息区域 - 使用原生滚动 */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-56">
+        <div className="space-y-6">
+          {activeConversation?.messages.length === 0 ? (
+            <div className="flex items-center justify-center h-64 text-muted-foreground">
+              <div className="text-center">
+                <div className="relative mb-6">
+                  <Brain className="w-16 h-16 mx-auto text-primary opacity-20" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-4 h-4 bg-primary rounded-full animate-ping" />
                   </div>
                 </div>
+                <h2 className="text-2xl font-semibold mb-2">开始对话吧！</h2>
+                <p className="text-muted-foreground mb-4">我是 PicoClaw，您的智能 AI 助手</p>
+                <div className="flex flex-wrap justify-center gap-2 text-sm">
+                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">📝 内容创作</span>
+                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">💻 编程助手</span>
+                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🔍 数据分析</span>
+                  <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🎨 创意设计</span>
+                </div>
               </div>
-            ) : (
-              <>
-                {activeConversation?.messages.map((message: Message) => (
-                  <ChatMessage key={message.id} message={message} />
-                ))}
-                {isLoading && <TypingIndicator />}
-              </>
-            )}
-          </div>
-        </ScrollArea>
+            </div>
+          ) : (
+            <>
+              {activeConversation?.messages.map((message: Message) => (
+                <ChatMessage key={message.id} message={message} />
+              ))}
+              {isLoading && <TypingIndicator />}
+            </>
+          )}
+        </div>
       </div>
 
       {/* 输入区域 - 固定在底部 */}
