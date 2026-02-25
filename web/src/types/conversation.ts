@@ -1,0 +1,17 @@
+export interface Conversation {
+  id: string
+  title: string
+  messages: Message[]
+  createdAt: Date
+  updatedAt: Date
+  model: string
+}
+
+export interface Message {
+  id: string
+  content: string
+  role: 'user' | 'assistant'
+  timestamp: Date
+  model?: string
+  thoughts?: any[]
+}

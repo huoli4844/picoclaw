@@ -1,36 +1,35 @@
-import { useState, useEffect, useRef } from 'react'
-import { ChatMessage } from './components/ChatMessage'
-import { ChatInput } from './components/ChatInput'
-import { TypingIndicator } from './components/TypingIndicator'
+import { useState, useEffect } from 'react'
 import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SkillsPage } from './components/skills/SkillsPage'
 import { McpPage } from './components/mcp/McpPage'
-import { ScrollArea } from './components/ui/scroll-area'
+import { MultiChat } from './components/conversation/MultiChat'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { useApi } from './hooks/useApi'
-import { Message, Model, ChatResponse } from './types'
+import { useConversations } from './hooks/useConversations'
+import { Model } from './types'
 import { Brain } from 'lucide-react'
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([])
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [currentView, setCurrentView] = useState<'chat' | 'skills' | 'settings' | 'mcp'>('chat')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { sendStreamingChatMessage, getConfig, updateConfig, isLoading } = useApi()
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+  const { getConfig, updateConfig } = useApi()
+  const {
+    conversations,
+    activeConversationId,
+    activeConversation,
+    isLoading,
+    createConversation,
+    selectConversation,
+    deleteConversation,
+    renameConversation,
+    sendMessage
+  } = useConversations()
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -68,77 +67,11 @@ function App() {
     initializeApp()
   }, [getConfig])
 
-  const handleSendMessage = async (content: string) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      role: 'user',
-      timestamp: new Date(),
-      model: selectedModel
-    }
-
-    setMessages(prev => [...prev, userMessage])
-
-    // 创建一个空的助手消息，用于实时更新思考过程和最终内容
-    const assistantMessageId = (Date.now() + 1).toString()
-    const assistantMessage: Message = {
-      id: assistantMessageId,
-      content: '',
-      role: 'assistant',
-      timestamp: new Date(),
-      model: selectedModel,
-      thoughts: []
-    }
-    
-    setMessages(prev => [...prev, assistantMessage])
-
-    try {
-      sendStreamingChatMessage(
-        {
-          message: content,
-          model: selectedModel,
-          stream: true
-        },
-        // onThought: 接收到思考过程时的回调
-        (thought: any) => {
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === assistantMessageId 
-                ? { ...msg, thoughts: [...(msg.thoughts || []), thought] }
-                : msg
-            )
-          )
-        },
-        // onComplete: 接收到最终回复时的回调
-        (response: ChatResponse) => {
-          console.log('App.tsx: Received completion:', response)
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === assistantMessageId 
-                ? { ...msg, content: response.message, timestamp: response.timestamp }
-                : msg
-            )
-          )
-        },
-        // onError: 出错时的回调
-        (error: string) => {
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === assistantMessageId 
-                ? { ...msg, content: `错误: ${error}` }
-                : msg
-            )
-          )
-        }
-      )
-    } catch (error) {
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === assistantMessageId 
-            ? { ...msg, content: `网络错误: ${error instanceof Error ? error.message : '未知错误'}` }
-            : msg
-        )
-      )
+  const handleChatClick = () => {
+    setCurrentView('chat')
+    // 如果当前在聊天视图，创建新的对话
+    if (currentView === 'chat') {
+      createConversation()
     }
   }
 
@@ -248,7 +181,13 @@ function App() {
       {/* Sidebar */}
       <Sidebar
         currentView={currentView}
-        onViewChange={setCurrentView}
+        onViewChange={(view) => {
+          if (view === 'chat') {
+            handleChatClick()
+          } else {
+            setCurrentView(view)
+          }
+        }}
         isSidebarOpen={isSidebarOpen}
         onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
       />
@@ -262,50 +201,18 @@ function App() {
           onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
-        {/* Messages */}
-        <ScrollArea className="flex-1">
-          <div className="chat-messages w-full h-full px-4">
-            {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-muted-foreground">
-                <div className="text-center">
-                  <div className="relative mb-6">
-                    <Brain className="w-16 h-16 mx-auto text-primary opacity-20" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-4 h-4 bg-primary rounded-full animate-ping" />
-                    </div>
-                  </div>
-                  <h2 className="text-2xl font-semibold mb-2">开始对话吧！</h2>
-                  <p className="text-muted-foreground mb-4">我是 PicoClaw，您的智能 AI 助手</p>
-                  <div className="flex flex-wrap justify-center gap-2 text-sm">
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">📝 内容创作</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">💻 编程助手</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🔍 数据分析</span>
-                    <span className="px-3 py-1 bg-primary/10 text-primary rounded-full">🎨 创意设计</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {messages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
-                ))}
-                {isLoading && <TypingIndicator />}
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
-
-        {/* Input */}
-        <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
-          <div className="w-full px-4">
-            <ChatInput
-              onSendMessage={handleSendMessage}
-              isLoading={isLoading}
-              disabled={!selectedModel || models.length === 0}
-            />
-          </div>
-        </div>
+        {/* MultiChat Component */}
+        <MultiChat
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          activeConversation={activeConversation}
+          isLoading={isLoading}
+          onConversationCreate={createConversation}
+          onConversationSelect={selectConversation}
+          onConversationDelete={deleteConversation}
+          onConversationRename={renameConversation}
+          onSendMessage={sendMessage}
+        />
       </div>
     </div>
   )
