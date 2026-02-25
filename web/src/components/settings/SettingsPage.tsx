@@ -1,10 +1,13 @@
-import { useState } from 'react'
-import { Settings as SettingsIcon, Palette, Bell, Database, Shield, Bot, Check, Plus, Trash2, Edit, Star } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Settings as SettingsIcon, Palette, Database, Bot, Check, Plus, Trash2, Edit, Star, RefreshCw } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Model } from '@/types'
+import { useFileBrowser } from '@/hooks/useFileBrowser'
+import { FileBrowser } from '@/components/file-browser/FileBrowser'
+import { FileViewer } from '@/components/file-browser/FileViewer'
 
 interface SettingsPageProps {
   onBack: () => void
@@ -34,13 +37,43 @@ export function SettingsPage({ onBack, models, onModelsChange, selectedModel, on
     api_base: '',
   })
 
+  // 文件浏览器状态
+  const {
+    files,
+    currentPath,
+    isLoading,
+    error,
+    listFiles,
+    getFileContent,
+    navigateToDirectory,
+    navigateUp,
+    deleteFileOrDirectory
+  } = useFileBrowser()
+  
+  const [fileContent, setFileContent] = useState<any>(null)
+  const [isFileViewerOpen, setIsFileViewerOpen] = useState(false)
+
+  // 初始化时加载文件列表
+  useEffect(() => {
+    if (activeSection === 'data') {
+      listFiles()
+    }
+  }, [activeSection, listFiles])
+
+  // 处理文件内容查看
+  const handleFileContent = async (path: string) => {
+    const content = await getFileContent(path)
+    if (content) {
+      setFileContent(content)
+      setIsFileViewerOpen(true)
+    }
+  }
+
   const settingsSections = [
-    { id: 'general', label: '通用', icon: SettingsIcon },
     { id: 'models', label: '模型配置', icon: Bot },
-    { id: 'appearance', label: '外观', icon: Palette },
-    { id: 'notifications', label: '通知', icon: Bell },
     { id: 'data', label: '数据', icon: Database },
-    { id: 'privacy', label: '隐私', icon: Shield },
+    { id: 'appearance', label: '外观', icon: Palette },
+    { id: 'general', label: '关于', icon: SettingsIcon },
   ]
 
   // 模型配置处理函数
@@ -397,6 +430,50 @@ export function SettingsPage({ onBack, models, onModelsChange, selectedModel, on
             </div>
           </div>
         )
+
+      case 'data':
+        return (
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium">文件浏览器</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => listFiles()}
+                  disabled={isLoading}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  刷新
+                </Button>
+              </div>
+              
+              <div className="bg-muted/30 border rounded-lg h-[500px]">
+                <FileBrowser
+                  files={files}
+                  currentPath={currentPath}
+                  isLoading={isLoading}
+                  error={error}
+                  onFileClick={(file) => {
+                    if (!file.isDir) {
+                      handleFileContent(file.path)
+                    }
+                  }}
+                  onDirectoryClick={navigateToDirectory}
+                  onNavigateUp={navigateUp}
+                  onFileContent={handleFileContent}
+                  onDeleteFile={deleteFileOrDirectory}
+                />
+              </div>
+              
+              <div className="text-xs text-muted-foreground mt-2">
+                <p>• 显示路径: {currentPath || '.picoclaw'}</p>
+                <p>• 文件数量: {files.length} 个</p>
+                <p>• 支持查看文本文件、代码文件等，最大文件大小 10MB</p>
+              </div>
+            </div>
+          </div>
+        )
       
       case 'general':
       default:
@@ -422,7 +499,7 @@ export function SettingsPage({ onBack, models, onModelsChange, selectedModel, on
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="border-b p-4">
-        <div className="max-w-2xl mx-auto">
+        <div className="w-[80%] mx-auto">
           <div className="flex items-center gap-3">
             <SettingsIcon className="w-6 h-6 text-primary" />
             <div>
@@ -435,7 +512,7 @@ export function SettingsPage({ onBack, models, onModelsChange, selectedModel, on
 
       {/* Settings Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto p-4">
+        <div className="w-[80%] mx-auto p-4">
           {/* Settings Navigation */}
           <div className="mb-6">
             <div className="flex flex-wrap gap-2">
@@ -469,6 +546,16 @@ export function SettingsPage({ onBack, models, onModelsChange, selectedModel, on
           </div>
         </div>
       </div>
+      
+      {/* 文件查看器 */}
+      <FileViewer
+        fileContent={fileContent}
+        isOpen={isFileViewerOpen}
+        onClose={() => {
+          setIsFileViewerOpen(false)
+          setFileContent(null)
+        }}
+      />
     </div>
   )
 }

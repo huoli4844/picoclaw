@@ -1228,6 +1228,246 @@ func deleteConversationHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+// 文件浏览器相关的处理函数
+func filesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// 获取查询参数中的路径，默认为用户主目录下的 .picoclaw
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			http.Error(w, "Failed to get user home directory", http.StatusInternalServerError)
+			return
+		}
+		path = filepath.Join(home, ".picoclaw")
+	}
+
+	// 安全检查：确保路径在 .picoclaw 目录内
+	home, _ := os.UserHomeDir()
+	picoclawRoot := filepath.Join(home, ".picoclaw")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(absPath, picoclawRoot) {
+		http.Error(w, "Access denied: path outside .picoclaw directory", http.StatusForbidden)
+		return
+	}
+
+	// 读取目录内容
+	files, err := os.ReadDir(absPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 构建文件信息列表
+	var fileInfo []map[string]interface{}
+	for _, file := range files {
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+
+		fileMap := map[string]interface{}{
+			"name":    file.Name(),
+			"path":    filepath.Join(absPath, file.Name()),
+			"isDir":   file.IsDir(),
+			"size":    info.Size(),
+			"modTime": info.ModTime(),
+		}
+
+		fileInfo = append(fileInfo, fileMap)
+	}
+
+	// 构建响应
+	result := map[string]interface{}{
+		"success": true,
+		"path":    absPath,
+		"files":   fileInfo,
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func fileContentHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// 获取查询参数中的文件路径
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		http.Error(w, "Path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// 安全检查：确保路径在 .picoclaw 目录内
+	home, _ := os.UserHomeDir()
+	picoclawRoot := filepath.Join(home, ".picoclaw")
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(absPath, picoclawRoot) {
+		http.Error(w, "Access denied: path outside .picoclaw directory", http.StatusForbidden)
+		return
+	}
+
+	// 检查是否为目录
+	info, err := os.Stat(absPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get file info: %v", err), http.StatusNotFound)
+		return
+	}
+
+	if info.IsDir() {
+		http.Error(w, "Path is a directory, not a file", http.StatusBadRequest)
+		return
+	}
+
+	// 读取文件内容
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// 检查文件大小，避免读取过大的文件
+	if len(content) > 10*1024*1024 { // 10MB 限制
+		http.Error(w, "File too large (max 10MB)", http.StatusBadRequest)
+		return
+	}
+
+	// 检查文件类型，判断是否为文本文件
+	contentType := http.DetectContentType(content)
+	if !strings.HasPrefix(contentType, "text/") &&
+		!strings.HasSuffix(strings.ToLower(path), ".md") &&
+		!strings.HasSuffix(strings.ToLower(path), ".txt") &&
+		!strings.HasSuffix(strings.ToLower(path), ".json") &&
+		!strings.HasSuffix(strings.ToLower(path), ".log") &&
+		!strings.HasSuffix(strings.ToLower(path), ".yaml") &&
+		!strings.HasSuffix(strings.ToLower(path), ".yml") &&
+		!strings.HasSuffix(strings.ToLower(path), ".toml") &&
+		!strings.HasSuffix(strings.ToLower(path), ".go") &&
+		!strings.HasSuffix(strings.ToLower(path), ".js") &&
+		!strings.HasSuffix(strings.ToLower(path), ".ts") &&
+		!strings.HasSuffix(strings.ToLower(path), ".tsx") &&
+		!strings.HasSuffix(strings.ToLower(path), ".py") &&
+		!strings.HasSuffix(strings.ToLower(path), ".sh") &&
+		!strings.HasSuffix(strings.ToLower(path), ".bat") &&
+		!strings.HasSuffix(strings.ToLower(path), ".html") &&
+		!strings.HasSuffix(strings.ToLower(path), ".css") &&
+		!strings.HasSuffix(strings.ToLower(path), ".xml") &&
+		!strings.HasSuffix(strings.ToLower(path), ".csv") {
+		http.Error(w, "Binary files are not supported", http.StatusBadRequest)
+		return
+	}
+
+	// 构建响应
+	result := map[string]interface{}{
+		"success":     true,
+		"path":        absPath,
+		"content":     string(content),
+		"size":        len(content),
+		"contentType": contentType,
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func fileDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// 从请求体中获取文件路径
+	var request struct {
+		Path string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.Path == "" {
+		http.Error(w, "Path parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	// 安全检查：确保路径在 .picoclaw 目录内
+	home, _ := os.UserHomeDir()
+	picoclawRoot := filepath.Join(home, ".picoclaw")
+	absPath, err := filepath.Abs(request.Path)
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(absPath, picoclawRoot) {
+		http.Error(w, "Access denied: path outside .picoclaw directory", http.StatusForbidden)
+		return
+	}
+
+	// 特殊保护：禁止删除某些重要的文件和目录
+	protectedFiles := []string{
+		filepath.Join(picoclawRoot, "config.json"),
+		filepath.Join(picoclawRoot, "workspace"),
+		filepath.Join(picoclawRoot, "skills"),
+		filepath.Join(picoclawRoot, "AGENT.md"),
+		filepath.Join(picoclawRoot, "HEARTBEAT.md"),
+		filepath.Join(picoclawRoot, "IDENTITY.md"),
+		filepath.Join(picoclawRoot, "SOUL.md"),
+		filepath.Join(picoclawRoot, "USER.md"),
+		filepath.Join(picoclawRoot, "MEMORY.md"),
+	}
+
+	for _, protected := range protectedFiles {
+		if absPath == protected {
+			http.Error(w, "Cannot delete protected file or directory", http.StatusForbidden)
+			return
+		}
+	}
+
+	// 获取文件/目录信息
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "File or directory does not exist", http.StatusNotFound)
+		} else {
+			http.Error(w, fmt.Sprintf("Failed to get file info: %v", err), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// 删除文件或目录
+	var deleteErr error
+	if info.IsDir() {
+		// 删除目录及其内容
+		deleteErr = os.RemoveAll(absPath)
+	} else {
+		// 删除文件
+		deleteErr = os.Remove(absPath)
+	}
+
+	if deleteErr != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete: %v", deleteErr), http.StatusInternalServerError)
+		return
+	}
+
+	// 构建响应
+	result := map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Successfully deleted %s", filepath.Base(absPath)),
+		"path":    absPath,
+		"isDir":   info.IsDir(),
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
 // 技能相关的处理函数
 func skillsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1976,6 +2216,11 @@ func main() {
 	api.HandleFunc("/conversations/{id}", getConversationHandler).Methods("GET")
 	api.HandleFunc("/conversations/{id}", updateConversationHandler).Methods("PUT")
 	api.HandleFunc("/conversations/{id}", deleteConversationHandler).Methods("DELETE")
+
+	// 文件浏览器相关路由
+	api.HandleFunc("/files", filesHandler).Methods("GET")
+	api.HandleFunc("/file-content", fileContentHandler).Methods("GET")
+	api.HandleFunc("/file-delete", fileDeleteHandler).Methods("DELETE")
 
 	// 技能相关路由
 	api.HandleFunc("/skills", skillsHandler).Methods("GET")
