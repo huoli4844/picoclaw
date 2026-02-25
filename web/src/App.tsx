@@ -29,7 +29,7 @@ function App() {
     deleteConversation,
     renameConversation,
     sendMessage
-  } = useConversations()
+  } = useConversations({ selectedModel })
 
   useEffect(() => {
     const initializeApp = async () => {

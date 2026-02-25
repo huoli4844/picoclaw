@@ -3,6 +3,10 @@ import { Conversation, Message } from '../types/conversation'
 import { useApi } from './useApi'
 import { ChatResponse } from '../types'
 
+interface UseConversationsProps {
+  selectedModel?: string
+}
+
 interface UseConversationsReturn {
   conversations: Conversation[]
   activeConversationId: string
@@ -16,7 +20,7 @@ interface UseConversationsReturn {
   sendMessage: (content: string) => Promise<void>
 }
 
-export function useConversations(): UseConversationsReturn {
+export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsProps = {}): UseConversationsReturn {
   const { sendStreamingChatMessage } = useApi()
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     // 初始化时创建一个默认对话
@@ -26,7 +30,7 @@ export function useConversations(): UseConversationsReturn {
       messages: [],
       createdAt: new Date(),
       updatedAt: new Date(),
-      model: 'gpt-4'
+      model: selectedModel
     }
     return [defaultConversation]
   })
@@ -40,13 +44,13 @@ export function useConversations(): UseConversationsReturn {
       messages: [],
       createdAt: new Date(),
       updatedAt: new Date(),
-      model: 'gpt-4' // 默认模型，可以后续配置
+      model: selectedModel // 使用当前选中的模型
     }
 
     setConversations(prev => [...prev, newConversation])
     setActiveConversationId(newConversation.id)
     return newConversation.id
-  }, [conversations.length])
+  }, [conversations.length, selectedModel])
 
   const selectConversation = useCallback((id: string) => {
     setActiveConversationId(id)
@@ -112,13 +116,16 @@ export function useConversations(): UseConversationsReturn {
 
     setIsLoading(true)
 
+    // 获取当前对话的模型，如果没有则使用全局选中的模型
+    const currentConversationModel = conversations.find(c => c.id === activeConversationId)?.model || selectedModel
+    
     // 创建用户消息
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
       role: 'user',
       timestamp: new Date(),
-      model: conversations.find(c => c.id === activeConversationId)?.model || 'gpt-4'
+      model: currentConversationModel
     }
 
     addMessage(activeConversationId, userMessage)
@@ -130,7 +137,7 @@ export function useConversations(): UseConversationsReturn {
       content: '',
       role: 'assistant',
       timestamp: new Date(),
-      model: conversations.find(c => c.id === activeConversationId)?.model || 'gpt-4',
+      model: currentConversationModel,
       thoughts: []
     }
 
@@ -138,11 +145,12 @@ export function useConversations(): UseConversationsReturn {
 
     try {
       const currentConv = conversations.find(c => c.id === activeConversationId)
+      const modelToUse = currentConv?.model || selectedModel
       
       await sendStreamingChatMessage(
         {
           message: content,
-          model: currentConv?.model || 'gpt-4',
+          model: modelToUse,
           stream: true
         },
         // onThought
