@@ -7,6 +7,25 @@ export interface Message {
   thoughts?: Thought[];
 }
 
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
+  model: string;
+}
+
+export interface CreateConversationRequest {
+  title?: string;
+  model: string;
+}
+
+export interface UpdateConversationRequest {
+  title?: string;
+  messages?: Message[];
+}
+
 export interface Model {
   model_name: string;
   model: string;
@@ -44,6 +63,7 @@ export interface ChatRequest {
   message: string;
   model: string;
   stream?: boolean;
+  conversationId?: string;
 }
 
 export interface ChatResponse {

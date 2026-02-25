@@ -16,7 +16,10 @@ import {
   McpSearchResponse,
   McpInstallRequest,
   McpInstallResponse,
-  McpValidationResponse
+  McpValidationResponse,
+  Conversation,
+  CreateConversationRequest,
+  UpdateConversationRequest
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
@@ -277,6 +280,35 @@ export function useApi() {
     })
   }, [request])
 
+  // 对话历史相关方法
+  const getConversations = useCallback(async (): Promise<ApiResponse<Conversation[]>> => {
+    return request<Conversation[]>('/conversations')
+  }, [request])
+
+  const createConversation = useCallback(async (requestObj: CreateConversationRequest): Promise<ApiResponse<Conversation>> => {
+    return request<Conversation>('/conversations', {
+      method: 'POST',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
+  const updateConversation = useCallback(async (id: string, requestObj: UpdateConversationRequest): Promise<ApiResponse<Conversation>> => {
+    return request<Conversation>(`/conversations/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(requestObj),
+    })
+  }, [request])
+
+  const getConversation = useCallback(async (id: string): Promise<ApiResponse<Conversation>> => {
+    return request<Conversation>(`/conversations/${id}`)
+  }, [request])
+
+  const deleteConversation = useCallback(async (id: string): Promise<ApiResponse> => {
+    return request(`/conversations/${id}`, {
+      method: 'DELETE',
+    })
+  }, [request])
+
   return {
     isLoading,
     request,
@@ -299,5 +331,11 @@ export function useApi() {
     getMcpServerDetail,
     validateMcpServer,
     callMcpTool,
+    // 对话历史方法
+    getConversations,
+    getConversation,
+    createConversation,
+    updateConversation,
+    deleteConversation,
   }
 }

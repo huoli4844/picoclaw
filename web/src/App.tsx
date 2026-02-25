@@ -26,6 +26,8 @@ function App() {
     isLoading,
     createConversation,
     selectConversation,
+    loadConversation,
+    closeConversation,
     deleteConversation,
     renameConversation,
     sendMessage
@@ -185,6 +187,8 @@ function App() {
               isLoading={isLoading}
               onConversationCreate={createConversation}
               onConversationSelect={selectConversation}
+              onConversationLoad={loadConversation}
+              onConversationClose={closeConversation}
               onConversationDelete={deleteConversation}
               onConversationRename={renameConversation}
               onSendMessage={sendMessage}

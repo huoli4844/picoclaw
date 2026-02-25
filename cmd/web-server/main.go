@@ -25,9 +25,10 @@ import (
 )
 
 type ChatRequest struct {
-	Message string `json:"message"`
-	Model   string `json:"model"`
-	Stream  bool   `json:"stream"`
+	Message        string `json:"message"`
+	Model          string `json:"model"`
+	Stream         bool   `json:"stream"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 type ChatResponse struct {
@@ -47,6 +48,42 @@ type Thought struct {
 	Duration  int       `json:"duration,omitempty"`  // in milliseconds
 	Iteration int       `json:"iteration,omitempty"` // LLM iteration number
 }
+
+// 对话历史相关数据结构
+type ConversationMessage struct {
+	ID        string    `json:"id"`
+	Content   string    `json:"content"`
+	Role      string    `json:"role"` // "user" | "assistant"
+	Timestamp time.Time `json:"timestamp"`
+	Model     string    `json:"model,omitempty"`
+	Thoughts  []Thought `json:"thoughts,omitempty"`
+}
+
+type Conversation struct {
+	ID        string                `json:"id"`
+	Title     string                `json:"title"`
+	Messages  []ConversationMessage `json:"messages"`
+	CreatedAt time.Time             `json:"createdAt"`
+	UpdatedAt time.Time             `json:"updatedAt"`
+	Model     string                `json:"model"`
+}
+
+type CreateConversationRequest struct {
+	Title string `json:"title"`
+	Model string `json:"model"`
+}
+
+type UpdateConversationRequest struct {
+	Title    string                `json:"title,omitempty"`
+	Messages []ConversationMessage `json:"messages,omitempty"`
+}
+
+// 全局对话历史管理
+var (
+	conversations    map[string]*Conversation
+	conversationsMu  sync.RWMutex
+	conversationsDir string
+)
 
 // ThoughtCollector 收集思考过程
 type ThoughtCollector struct {
@@ -650,6 +687,11 @@ func handleStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest
 	ctx := context.Background()
 	sessionKey := fmt.Sprintf("web:%d", time.Now().Unix())
 
+	// 如果提供了对话ID，保存用户消息到历史记录
+	if req.ConversationID != "" {
+		saveUserMessageToConversation(req.ConversationID, req.Message, req.Model)
+	}
+
 	// 创建思考过程收集器
 	muThoughts.Lock()
 	collector := NewThoughtCollectorWithSession(func(thought Thought) {
@@ -706,7 +748,7 @@ func handleStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest
 	if err != nil {
 		collector.AddThought("thinking", "❌ 处理消息时出错: "+err.Error())
 		// 发送错误完成消息
-		sendSSEComplete(w, flusher, "", req.Model, err.Error())
+		sendSSEComplete(w, flusher, "", req.Model, err.Error(), req.ConversationID, collector.thoughts)
 		return
 	}
 
@@ -715,7 +757,7 @@ func handleStreamingChat(w http.ResponseWriter, r *http.Request, req ChatRequest
 	collector.AddThought("thinking", "✅ 消息处理完成，耗时: "+fmt.Sprintf("%dms", duration))
 
 	// 发送最终完成消息
-	sendSSEComplete(w, flusher, response, req.Model, "")
+	sendSSEComplete(w, flusher, response, req.Model, "", req.ConversationID, collector.thoughts)
 }
 
 func sendSSEThought(w http.ResponseWriter, flusher http.Flusher, thought Thought) {
@@ -730,7 +772,7 @@ func sendSSEThought(w http.ResponseWriter, flusher http.Flusher, thought Thought
 	flusher.Flush()
 }
 
-func sendSSEComplete(w http.ResponseWriter, flusher http.Flusher, message, model, errorMsg string) {
+func sendSSEComplete(w http.ResponseWriter, flusher http.Flusher, message, model, errorMsg, conversationID string, thoughts []Thought) {
 	response := map[string]interface{}{
 		"type":      "complete",
 		"message":   message,
@@ -740,6 +782,11 @@ func sendSSEComplete(w http.ResponseWriter, flusher http.Flusher, message, model
 
 	if errorMsg != "" {
 		response["error"] = errorMsg
+	}
+
+	// 如果提供了对话ID且没有错误，保存助手消息到历史记录
+	if conversationID != "" && errorMsg == "" && message != "" {
+		saveAssistantMessageToConversation(conversationID, message, model, thoughts)
 	}
 
 	data, _ := json.Marshal(response)
@@ -866,6 +913,319 @@ func modelsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(models)
+}
+
+// 对话历史处理器
+func initConversations() error {
+	// 获取用户主目录
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home directory: %v", err)
+	}
+
+	// 设置跨平台的对话存储路径
+	conversationsDir = filepath.Join(home, ".picoclaw", "workspace", "chat")
+	log.Printf("Chat storage directory: %s", conversationsDir)
+
+	// 创建对话存储目录
+	if err := os.MkdirAll(conversationsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create conversations directory: %v", err)
+	}
+	log.Printf("Chat storage directory created/verified successfully")
+
+	// 加载现有对话
+	files, err := filepath.Glob(filepath.Join(conversationsDir, "*.json"))
+	if err != nil {
+		return fmt.Errorf("failed to read conversation files: %v", err)
+	}
+
+	conversationsMu.Lock()
+	defer conversationsMu.Unlock()
+
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			log.Printf("Warning: Failed to read conversation file %s: %v", file, err)
+			continue
+		}
+
+		var conv Conversation
+		if err := json.Unmarshal(data, &conv); err != nil {
+			log.Printf("Warning: Failed to parse conversation file %s: %v", file, err)
+			continue
+		}
+
+		conversations[conv.ID] = &conv
+	}
+
+	log.Printf("Loaded %d conversations", len(conversations))
+	return nil
+}
+
+func saveConversation(conv *Conversation) error {
+	data, err := json.MarshalIndent(conv, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal conversation: %v", err)
+	}
+
+	filename := filepath.Join(conversationsDir, conv.ID+".json")
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("failed to save conversation file: %v", err)
+	}
+
+	return nil
+}
+
+// 保存用户消息到对话历史
+func saveUserMessageToConversation(conversationID, message, model string) {
+	conversationsMu.Lock()
+	defer conversationsMu.Unlock()
+
+	conv, exists := conversations[conversationID]
+	if !exists {
+		log.Printf("Conversation %s not found, skipping user message save", conversationID)
+		return
+	}
+
+	// 创建用户消息
+	userMessage := ConversationMessage{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Content:   message,
+		Role:      "user",
+		Timestamp: time.Now(),
+		Model:     model,
+	}
+
+	// 添加到对话消息列表
+	conv.Messages = append(conv.Messages, userMessage)
+	conv.UpdatedAt = time.Now()
+
+	// 保存到文件
+	if err := saveConversation(conv); err != nil {
+		log.Printf("Failed to save user message to conversation %s: %v", conversationID, err)
+	} else {
+		log.Printf("Saved user message to conversation %s", conversationID)
+	}
+}
+
+// 保存助手消息到对话历史
+func saveAssistantMessageToConversation(conversationID, message, model string, thoughts []Thought) {
+	conversationsMu.Lock()
+	defer conversationsMu.Unlock()
+
+	conv, exists := conversations[conversationID]
+	if !exists {
+		log.Printf("Conversation %s not found, skipping assistant message save", conversationID)
+		return
+	}
+
+	// 创建助手消息
+	assistantMessage := ConversationMessage{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Content:   message,
+		Role:      "assistant",
+		Timestamp: time.Now(),
+		Model:     model,
+		Thoughts:  thoughts,
+	}
+
+	// 添加到对话消息列表
+	conv.Messages = append(conv.Messages, assistantMessage)
+	conv.UpdatedAt = time.Now()
+
+	// 保存到文件
+	if err := saveConversation(conv); err != nil {
+		log.Printf("Failed to save assistant message to conversation %s: %v", conversationID, err)
+	} else {
+		log.Printf("Saved assistant message to conversation %s", conversationID)
+	}
+}
+
+func conversationsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	conversationsMu.RLock()
+	defer conversationsMu.RUnlock()
+
+	// 转换为切片并按更新时间排序
+	convList := make([]*Conversation, 0, len(conversations))
+	for _, conv := range conversations {
+		convList = append(convList, conv)
+	}
+
+	// 按更新时间降序排序
+	for i := 0; i < len(convList); i++ {
+		for j := i + 1; j < len(convList); j++ {
+			if convList[i].UpdatedAt.Before(convList[j].UpdatedAt) {
+				convList[i], convList[j] = convList[j], convList[i]
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(convList)
+}
+
+func createConversationHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req CreateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// 生成唯一ID
+	id := fmt.Sprintf("conv_%d", time.Now().UnixNano())
+
+	// 如果没有提供标题，使用默认标题
+	title := req.Title
+	if title == "" {
+		title = "新对话 " + time.Now().Format("2006-01-02 15:04:05")
+	}
+
+	conv := &Conversation{
+		ID:        id,
+		Title:     title,
+		Messages:  make([]ConversationMessage, 0),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Model:     req.Model,
+	}
+
+	// 保存到内存和文件
+	conversationsMu.Lock()
+	conversations[id] = conv
+	conversationsMu.Unlock()
+
+	if err := saveConversation(conv); err != nil {
+		http.Error(w, "Failed to save conversation", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(conv)
+}
+
+func updateConversationHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	if id == "" {
+		http.Error(w, "Conversation ID is required", http.StatusBadRequest)
+		return
+	}
+
+	var req UpdateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	conversationsMu.Lock()
+	defer conversationsMu.Unlock()
+
+	conv, exists := conversations[id]
+	if !exists {
+		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// 更新字段
+	if req.Title != "" {
+		conv.Title = req.Title
+	}
+	if req.Messages != nil {
+		conv.Messages = req.Messages
+	}
+	conv.UpdatedAt = time.Now()
+
+	if err := saveConversation(conv); err != nil {
+		http.Error(w, "Failed to save conversation", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(conv)
+}
+
+func getConversationHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	if id == "" {
+		http.Error(w, "Conversation ID is required", http.StatusBadRequest)
+		return
+	}
+
+	conversationsMu.RLock()
+	defer conversationsMu.RUnlock()
+
+	conv, exists := conversations[id]
+	if !exists {
+		// 如果内存中没有，尝试从文件加载
+		filename := filepath.Join(conversationsDir, id+".json")
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			http.Error(w, "Conversation not found", http.StatusNotFound)
+			return
+		}
+
+		var fileConv Conversation
+		if err := json.Unmarshal(data, &fileConv); err != nil {
+			http.Error(w, "Failed to parse conversation file", http.StatusInternalServerError)
+			return
+		}
+
+		// 加载到内存
+		conversationsMu.Lock()
+		conversations[id] = &fileConv
+		conversationsMu.Unlock()
+
+		conv = &fileConv
+	}
+
+	json.NewEncoder(w).Encode(conv)
+}
+
+func deleteConversationHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	if id == "" {
+		http.Error(w, "Conversation ID is required", http.StatusBadRequest)
+		return
+	}
+
+	conversationsMu.Lock()
+	defer conversationsMu.Unlock()
+
+	conv, exists := conversations[id]
+	if !exists {
+		http.Error(w, "Conversation not found", http.StatusNotFound)
+		return
+	}
+
+	// 删除文件
+	filename := filepath.Join(conversationsDir, id+".json")
+	if err := os.Remove(filename); err != nil {
+		log.Printf("Warning: Failed to delete conversation file %s: %v", filename, err)
+	}
+
+	// 从内存中删除
+	delete(conversations, id)
+
+	// 返回成功响应
+	result := map[string]interface{}{
+		"success": true,
+		"message": "Conversation deleted successfully",
+		"deleted": conv,
+	}
+
+	json.NewEncoder(w).Encode(result)
 }
 
 // 技能相关的处理函数
@@ -1586,6 +1946,12 @@ func main() {
 		// 继续运行，但功能可能受限
 	}
 
+	// 初始化对话历史
+	conversations = make(map[string]*Conversation)
+	if err := initConversations(); err != nil {
+		log.Printf("Warning: Failed to initialize conversations: %v", err)
+	}
+
 	// 初始化MCP注册表
 	home, _ := os.UserHomeDir()
 	mcpStoragePath := filepath.Join(home, ".picoclaw", "mcp")
@@ -1603,6 +1969,13 @@ func main() {
 	api.HandleFunc("/config", updateConfigHandler).Methods("PUT")
 	api.HandleFunc("/chat", chatHandler).Methods("POST")
 	api.HandleFunc("/models", modelsHandler).Methods("GET")
+
+	// 对话历史相关路由
+	api.HandleFunc("/conversations", conversationsHandler).Methods("GET")
+	api.HandleFunc("/conversations", createConversationHandler).Methods("POST")
+	api.HandleFunc("/conversations/{id}", getConversationHandler).Methods("GET")
+	api.HandleFunc("/conversations/{id}", updateConversationHandler).Methods("PUT")
+	api.HandleFunc("/conversations/{id}", deleteConversationHandler).Methods("DELETE")
 
 	// 技能相关路由
 	api.HandleFunc("/skills", skillsHandler).Methods("GET")

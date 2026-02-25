@@ -9,6 +9,7 @@ interface ConversationTabsProps {
   activeConversationId: string
   onConversationSelect: (id: string) => void
   onConversationCreate: () => void
+  onConversationClose: (id: string) => void
   onConversationDelete: (id: string) => void
   onConversationRename: (id: string, newTitle: string) => void
 }
@@ -18,6 +19,7 @@ export function ConversationTabs({
   activeConversationId,
   onConversationSelect,
   onConversationCreate,
+  onConversationClose,
   onConversationDelete,
   onConversationRename
 }: ConversationTabsProps) {
@@ -112,7 +114,9 @@ export function ConversationTabs({
                 <>
                   <MessageSquare className="w-4 h-4 flex-shrink-0" />
                   <button
-                    onClick={() => onConversationSelect(conversation.id)}
+                    onClick={async () => {
+                      await onConversationSelect(conversation.id)
+                    }}
                     className="flex-1 text-left truncate text-sm font-medium"
                   >
                     {conversation.title}
@@ -133,18 +137,26 @@ export function ConversationTabs({
                     <Edit2 className="w-3 h-3" />
                   </Button>
                   
-                  {/* 删除按钮 */}
+                  {/* 关闭按钮 - 点击只是从界面移除，不删除文件 */}
                   {conversations.length > 1 && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onConversationDelete(conversation.id)
+                        onConversationClose(conversation.id)
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        if (window.confirm('确定要永久删除这个对话吗？删除后无法恢复。')) {
+                          onConversationDelete(conversation.id)
+                        }
                       }}
                       className={`h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity
                         ${isActive ? 'opacity-100 hover:bg-primary/20' : 'hover:bg-accent/20'}
                       `}
+                      title="点击关闭，右键删除"
                     >
                       <X className="w-3 h-3" />
                     </Button>

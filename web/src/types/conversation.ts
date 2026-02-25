@@ -15,3 +15,13 @@ export interface Message {
   model?: string
   thoughts?: any[]
 }
+
+export interface CreateConversationRequest {
+  title?: string
+  model: string
+}
+
+export interface UpdateConversationRequest {
+  title?: string
+  messages?: Message[]
+}
