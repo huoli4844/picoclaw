@@ -193,26 +193,30 @@ function App() {
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Header */}
-        <Header
-          selectedModel={selectedModel}
-          models={models}
-          onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-        />
+        <div className="flex-shrink-0">
+          <Header
+            selectedModel={selectedModel}
+            models={models}
+            onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+          />
+        </div>
 
         {/* MultiChat Component */}
-        <MultiChat
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          activeConversation={activeConversation}
-          isLoading={isLoading}
-          onConversationCreate={createConversation}
-          onConversationSelect={selectConversation}
-          onConversationDelete={deleteConversation}
-          onConversationRename={renameConversation}
-          onSendMessage={sendMessage}
-        />
+        <div className="flex-1 min-h-0">
+          <MultiChat
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            activeConversation={activeConversation}
+            isLoading={isLoading}
+            onConversationCreate={createConversation}
+            onConversationSelect={selectConversation}
+            onConversationDelete={deleteConversation}
+            onConversationRename={renameConversation}
+            onSendMessage={sendMessage}
+          />
+        </div>
       </div>
     </div>
   )

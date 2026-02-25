@@ -37,7 +37,7 @@ export function MultiChat({
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full min-h-0">
       {/* 对话标签 */}
       <div className="flex-shrink-0">
         <ConversationTabs
@@ -51,7 +51,7 @@ export function MultiChat({
       </div>
 
       {/* 消息区域 - 使用原生滚动 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-56">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-6">
           {activeConversation?.messages.length === 0 ? (
             <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -83,14 +83,12 @@ export function MultiChat({
         </div>
       </div>
 
-      {/* 输入区域 - 固定在底部 */}
-      <div className="fixed bottom-0 left-0 right-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 z-50">
-        <div className="max-w-4xl mx-auto">
-          <ChatInput
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-          />
-        </div>
+      {/* 输入区域 - 使用 flexbox 固定在底部 */}
+      <div className="flex-shrink-0 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
+        <ChatInput
+          onSendMessage={handleSendMessage}
+          isLoading={isLoading}
+        />
       </div>
     </div>
   )
