@@ -1,0 +1,8 @@
+2026/02/24 23:14:48 [2026-02-24T15:14:48Z] [INFO] agent: Created implicit main agent (no agents.list configured)
+2026/02/24 23:14:48 Using configured workspace: /Users/huoli4844/.picoclaw/workspace
+2026/02/24 23:14:48 Warning: Frontend build directory not found at ./web/dist
+PicoClaw Web Server starting on port 8080
+Frontend: http://localhost:8080
+API: http://localhost:8080/api
+2026/02/24 23:14:48 listen tcp :8080: bind: address already in use
+exit status 1

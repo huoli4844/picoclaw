@@ -447,6 +447,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"filesystem", "files", "directory", "io"},
 				Category:    "filesystem",
 				Transport:   "stdio",
+				Command:     "npx",
+				Args:        []string{"@pulsemcp/server-filesystem"},
 				Status:      "available",
 			})
 		}
@@ -463,6 +465,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"database", "db", "sql", "storage"},
 				Category:    "database",
 				Transport:   "stdio",
+				Command:     "npx",
+				Args:        []string{"@pulsemcp/server-database"},
 				Status:      "available",
 			})
 		}
@@ -481,6 +485,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"search", "web", "internet", "query"},
 				Category:    "utilities",
 				Transport:   "sse",
+				Command:     "npx",
+				Args:        []string{"@mcpso/server-web-search"},
 				Status:      "available",
 			})
 		}
@@ -497,6 +503,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"file", "manager", "filesystem", "io"},
 				Category:    "filesystem",
 				Transport:   "stdio",
+				Command:     "npx",
+				Args:        []string{"@mcpso/server-file-manager"},
 				Status:      "available",
 			})
 		}
@@ -515,6 +523,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"development", "tools", "dev", "programming"},
 				Category:    "development",
 				Transport:   "websocket",
+				Command:     "npx",
+				Args:        []string{"@mcpservers/server-development-tools"},
 				Status:      "available",
 			})
 		}
@@ -531,6 +541,8 @@ func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error)
 				Keywords:    []string{"file", "explorer", "filesystem", "browser"},
 				Category:    "filesystem",
 				Transport:   "stdio",
+				Command:     "npx",
+				Args:        []string{"@mcpservers/server-file-explorer"},
 				Status:      "available",
 			})
 		}
