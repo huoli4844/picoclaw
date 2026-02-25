@@ -1254,6 +1254,23 @@ func mcpSearchHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func mcpSourcesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	sources, err := mcp.GetAvailableMCPSources()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := map[string]interface{}{
+		"success": true,
+		"data":    sources,
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
 func mcpInstallHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -1544,6 +1561,7 @@ func main() {
 	api.HandleFunc("/mcp/servers/{id:.+}/validate", mcpValidateServerHandler).Methods("POST")
 	api.HandleFunc("/mcp/servers/{id:.+}/call", mcpCallToolHandler).Methods("POST")
 	api.HandleFunc("/mcp/search", mcpSearchHandler).Methods("POST")
+	api.HandleFunc("/mcp/sources", mcpSourcesHandler).Methods("GET")
 	api.HandleFunc("/mcp/install", mcpInstallHandler).Methods("POST")
 
 	// 静态文件服务（用于前端构建文件）

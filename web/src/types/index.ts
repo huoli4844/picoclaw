@@ -140,7 +140,9 @@ export interface McpSearchRequest {
   query: string;
   category?: string;
   transport?: string;
+  sources?: string[];
   limit?: number;
+  offset?: number;
 }
 
 export interface McpSearchResponse {

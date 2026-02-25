@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
+
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Search, Download, Loader2, Server, Globe, Terminal, Radio } from 'lucide-react'
+import { Search, Download, Loader2, Server, Globe, Terminal, Radio, ChevronDown, X, Check } from 'lucide-react'
 import { useApi } from '@/hooks/useApi'
 import { McpSearchRequest, McpServer, McpInstallRequest } from '@/types'
 
@@ -20,66 +20,204 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
   const [searchQuery, setSearchQuery] = useState('')
   const [category, setCategory] = useState<string>('all')
   const [transport, setTransport] = useState<string>('all')
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [availableSources, setAvailableSources] = useState<string[]>([])
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false)
   const [searchResults, setSearchResults] = useState<McpServer[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isInstalling, setIsInstalling] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState<string | null>(null)
+  
+  // 分页状态
+  const [hasMore, setHasMore] = useState(true)
+  const [totalCount, setTotalCount] = useState(0)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  
   const { searchMcpServers, installMcpServer, validateMcpServer } = useApi()
 
   // 添加调试状态
   const [debugInfo, setDebugInfo] = useState<string>('')
+  
+  // Intersection Observer for infinite scroll
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
-  const handleSearch = async () => {
-    // 允许空搜索，这样可以显示所有可用的MCP服务器
-    console.log('开始搜索MCP服务器...', { searchQuery, category, transport })
+  const PAGE_SIZE = 50  // 增加每次加载的数量，减少请求次数
+
+  // Load available MCP sources when dialog opens
+  useEffect(() => {
+    console.log('MCP搜索对话框状态:', isOpen, '可用源数量:', availableSources.length)
+    if (isOpen && availableSources.length === 0) {
+      loadAvailableSources()
+    }
+  }, [isOpen, availableSources.length])
+
+  const loadAvailableSources = async () => {
+    try {
+      console.log('开始加载MCP源...')
+      
+      // 直接使用fetch API
+      const response = await fetch('http://localhost:8080/api/mcp/sources')
+      const data = await response.json()
+      console.log('直接API调用结果:', data)
+      
+      if (data.success && Array.isArray(data.data)) {
+        const sources = data.data
+        setAvailableSources(sources)
+        console.log('MCP源加载成功:', sources.length, '个源:', sources)
+      } else {
+        console.error('MCP源数据格式错误:', data)
+      }
+    } catch (error) {
+      console.error('加载MCP源失败:', error)
+    }
+  }
+
+  const handleSourceToggle = (source: string) => {
+    setSelectedSources(prev => {
+      if (prev.includes(source)) {
+        return prev.filter(s => s !== source)
+      } else {
+        return [...prev, source]
+      }
+    })
+  }
+
+  const handleSourceRemove = (source: string) => {
+    setSelectedSources(prev => prev.filter(s => s !== source))
+  }
+
+  // Handle clicking outside to close source dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showSourceDropdown) {
+        const target = event.target as Element
+        if (!target.closest('.relative')) {
+          setShowSourceDropdown(false)
+        }
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSourceDropdown])
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0]
+        if (target.isIntersecting && hasMore && !isSearching) {
+          console.log('Intersection Observer触发加载更多...')
+          handleLoadMore()
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1
+      }
+    )
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current)
+    }
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current)
+      }
+    }
+  }, [hasMore, isSearching])
+
+  const handleSearch = async (isLoadMore = false) => {
+    console.log('开始搜索MCP服务器...', { searchQuery, category, transport, isLoadMore })
     setIsSearching(true)
+    
     try {
       const request: McpSearchRequest = {
         query: searchQuery,
-        limit: 20,
+        limit: isLoadMore ? 1000 : PAGE_SIZE,  // 加载更多时使用大数值获取所有剩余数据
+        offset: isLoadMore ? searchResults.length : 0,
         ...(category !== 'all' && { category }),
-        ...(transport !== 'all' && { transport })
+        ...(transport !== 'all' && { transport }),
+        ...(selectedSources.length > 0 && { sources: selectedSources })
       }
+      
       const result = await searchMcpServers(request)
       console.log('Search result:', result)
+      
       if (result.success && result.data) {
         console.log('Search data:', result.data)
         
-        // API返回的数据结构: {success: true, data: {data: {query, results: [...]}}}
-        let searchData = result.data as any
+        // 处理双重嵌套：result.data 可能是 {data: {results: [...], success: true}} 或直接是 {results: [...]}
+        let searchData: any = result.data
+        if (searchData.data) {
+          // 双重嵌套情况
+          searchData = searchData.data
+        }
+        console.log('处理后的searchData:', searchData)
+        console.log('searchData.results:', searchData.results)
         
-        // 检查是否有嵌套的data结构
-        if (searchData && searchData.data && searchData.data.results) {
-          const results = searchData.data.results
-          console.log('找到嵌套数据结构! 即将设置searchResults:', results)
-          setSearchResults(results)
-          setDebugInfo(`找到 ${results.length} 个结果 (使用嵌套data结构)`)
-          console.log('searchResults设置完成')
-        } else if (searchData && searchData.results) {
-          // 兼容直接的数据结构
-          const results = searchData.results
-          console.log('找到直接数据结构! 即将设置searchResults:', results)
-          setSearchResults(results)
-          setDebugInfo(`找到 ${results.length} 个结果 (使用直接data结构)`)
-          console.log('searchResults设置完成')
+        if (searchData && searchData.results) {
+          const newResults = searchData.results
+          console.log('找到新的搜索结果:', newResults.length)
+          console.log('搜索结果内容:', newResults)
+          
+          if (isLoadMore) {
+            // 加载更多：追加到现有结果
+            const newTotalLength = searchResults.length + newResults.length
+            setSearchResults(prev => [...prev, ...newResults])
+            setTotalCount(searchData.total || 0)
+            setHasMore(newTotalLength < (searchData.total || 0))
+            setDebugInfo(`共找到 ${searchData.total || 0} 个结果，当前显示 ${newTotalLength} 个`)
+          } else {
+            // 新搜索：替换所有结果
+            setSearchResults(newResults)
+            setTotalCount(searchData.total || 0)
+            setHasMore(newResults.length < (searchData.total || 0))
+            setDebugInfo(`共找到 ${searchData.total || 0} 个结果，当前显示 ${newResults.length} 个`)
+          }
         } else {
-          console.log('条件失败! 进入else分支')
-          console.log('完整数据结构:', JSON.stringify(searchData, null, 2))
+          console.log('意外的数据结构:', JSON.stringify(searchData, null, 2))
           setDebugInfo(`意外的数据结构: ${JSON.stringify(searchData, null, 2)}`)
-          setSearchResults([])
+          if (!isLoadMore) {
+            setSearchResults([])
+          }
         }
       } else {
         console.warn('Search API response unsuccessful:', result)
-        setSearchResults([])
+        if (!isLoadMore) {
+          setSearchResults([])
+        }
       }
     } catch (error) {
       console.error('Failed to search MCP servers:', error)
-      setSearchResults([])
+      if (!isLoadMore) {
+        setSearchResults([])
+      }
     } finally {
-      // 添加延迟确保状态更新完成
-      setTimeout(() => {
-        setIsSearching(false)
-      }, 100)
+      setIsSearching(false)
+      setIsInitialLoad(false)
+    }
+  }
+
+  // 初始搜索
+  const handleInitialSearch = () => {
+    handleSearch(false)
+  }
+
+  // 加载更多
+  const handleLoadMore = () => {
+    console.log('点击加载更多...', { 
+      currentResults: searchResults.length, 
+      hasMore, 
+      isSearching, 
+      totalCount 
+    })
+    if (!isSearching && hasMore) {
+      handleSearch(true)
     }
   }
 
@@ -192,7 +330,7 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                 className="flex-1"
               />
               <Button 
-                onClick={handleSearch} 
+                onClick={handleInitialSearch} 
                 disabled={isSearching}
                 className="flex items-center gap-2"
               >
@@ -253,6 +391,19 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
               >
                 测试数据
               </Button>
+              <Button 
+                onClick={() => {
+                  console.log('手动测试MCP源API')
+                  fetch('http://localhost:8080/api/mcp/sources')
+                    .then(response => response.json())
+                    .then(data => console.log('直接API调用结果:', data))
+                    .catch(error => console.error('直接API调用错误:', error))
+                }}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                测试API
+              </Button>
             </div>
             
             {/* Filters */}
@@ -283,11 +434,99 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                   <SelectItem value="websocket">WebSocket</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* MCP Sources Multi-Select Dropdown */}
+              <div className="relative">
+                <div 
+                  className="flex items-center gap-2 border rounded-md px-3 py-2 min-w-48 cursor-pointer bg-white hover:bg-gray-50"
+                  onClick={() => {
+                    console.log('MCP源选择器被点击，当前状态:', showSourceDropdown)
+                    setShowSourceDropdown(!showSourceDropdown)
+                  }}
+                >
+                  <div className="flex-1 text-sm text-gray-600">
+                    {selectedSources.length === 0 
+                      ? "选择MCP源" 
+                      : `已选择 ${selectedSources.length} 个源`
+                    }
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                </div>
+                
+                {showSourceDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg z-[9999] max-h-48 overflow-y-auto">
+                    <div className="p-2">
+                      {availableSources.length > 0 ? (
+                        availableSources.map((source) => (
+                        <div 
+                          key={source} 
+                          className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                          onClick={() => handleSourceToggle(source)}
+                        >
+                          <div className={`w-4 h-4 border rounded flex items-center justify-center ${
+                            selectedSources.includes(source) 
+                              ? 'bg-blue-500 border-blue-500' 
+                              : 'border-gray-300'
+                          }`}>
+                            {selectedSources.includes(source) && (
+                              <Check className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                          <span className="text-sm flex-1">
+                            {source}
+                          </span>
+                        </div>
+                      ))
+                      ) : (
+                        <div className="p-2 text-sm text-gray-500">加载中...</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Sources Badges */}
+              {selectedSources.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {selectedSources.map((source) => (
+                    <Badge 
+                      key={source} 
+                      variant="secondary" 
+                      className="flex items-center gap-1 cursor-pointer"
+                      onClick={() => handleSourceRemove(source)}
+                    >
+                      {source}
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Search Results */}
-          <ScrollArea className="flex-1">
+          <div 
+            className="flex-1 overflow-y-auto"
+            onScroll={(e) => {
+              const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+              // 当滚动到底部90%时，自动加载更多
+              const threshold = (scrollHeight - clientHeight) * 0.9 + clientHeight
+              console.log('滚动检测:', { 
+                scrollTop, 
+                scrollHeight, 
+                clientHeight, 
+                threshold,
+                hasMore, 
+                isSearching,
+                shouldLoad: scrollTop + clientHeight >= threshold
+              })
+              
+              if (scrollTop + clientHeight >= threshold && hasMore && !isSearching) {
+                console.log('触发自动加载更多...')
+                handleLoadMore()
+              }
+            }}
+          >
             <div className="space-y-3">
               {(() => {
                 console.log('渲染阶段 - searchResults:', searchResults)
@@ -295,7 +534,7 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                 return null
               })()}
               
-              {(!searchResults || searchResults.length === 0) && !isSearching && (
+              {isInitialLoad && !searchResults.length && !isSearching && (
                 <div className="flex items-center justify-center h-32 text-muted-foreground">
                   <div className="text-center">
                     <Server className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -372,13 +611,16 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                 </Card>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </div>
 
           <div className="flex justify-between items-center mt-4">
             <div className="flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">
-                搜索到 {(searchResults || []).length} 个结果
+                {totalCount > 0 
+                  ? `显示 ${searchResults.length} / ${totalCount} 个结果`
+                  : `搜索到 ${searchResults.length} 个结果`
+                }
               </p>
               {debugInfo && (
                 <details className="text-xs text-muted-foreground">
@@ -387,12 +629,41 @@ export function McpSearch({ isOpen, onClose, onServerInstalled }: McpSearchProps
                 </details>
               )}
             </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
-              关闭
-            </Button>
+            <div className="flex gap-2">
+              {/* 加载更多按钮 */}
+              {hasMore && !isSearching && searchResults.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleLoadMore}
+                  disabled={isSearching}
+                  className="flex items-center gap-2"
+                >
+                  {isSearching ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      加载中...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4" />
+                      加载更多
+                    </>
+                  )}
+                </Button>
+              )}
+              
+              {/* 没有更多数据提示 */}
+              {!hasMore && searchResults.length > 0 && (
+                <p className="text-sm text-muted-foreground italic">
+                  已显示所有结果
+                </p>
+              )}
+              
+              <Button variant="outline" onClick={onClose}>
+                关闭
+              </Button>
+            </div>
           </div>
-        </div>
       </DialogContent>
     </Dialog>
   )

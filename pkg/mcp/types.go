@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -32,6 +33,20 @@ type MCPServer struct {
 	InstalledAt *time.Time        `json:"installed_at,omitempty"`
 }
 
+// MCPSource represents an MCP source website
+type MCPSource struct {
+	Name     string `json:"name"`
+	Homepage string `json:"homepage"`
+}
+
+// MCPSourceRegistry represents the MCP source registry structure
+type MCPSourceRegistry struct {
+	Version     string      `json:"version"`
+	LastUpdated time.Time   `json:"last_updated"`
+	RegistryURL string      `json:"registry_url"`
+	Servers     []MCPSource `json:"servers"`
+}
+
 // MCPTool represents a tool provided by an MCP server
 type MCPTool struct {
 	Name        string         `json:"name"`
@@ -52,11 +67,12 @@ type MCPResource struct {
 
 // MCPSearchRequest represents a search request for MCP servers
 type MCPSearchRequest struct {
-	Query     string `json:"query"`
-	Category  string `json:"category,omitempty"`
-	Transport string `json:"transport,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
-	Offset    int    `json:"offset,omitempty"`
+	Query     string   `json:"query"`
+	Category  string   `json:"category,omitempty"`
+	Transport string   `json:"transport,omitempty"`
+	Sources   []string `json:"sources,omitempty"`
+	Limit     int      `json:"limit,omitempty"`
+	Offset    int      `json:"offset,omitempty"`
 }
 
 // MCPSearchResponse represents the response from MCP server search
@@ -123,65 +139,26 @@ type MCPServerInfo struct {
 	Transport   string `json:"transport,omitempty"`
 }
 
-// SearchMCPServersOnline searches for MCP servers from mcp.json config file
-func SearchMCPServersOnline(query string, category string, limit int, offset int) (*MCPSearchResponse, error) {
-	// Fetch from mcp.json config file
-	servers, err := fetchFromConfigFile()
+// SearchMCPServersOnline searches for MCP servers from source websites
+func SearchMCPServersOnline(query string, category string, sources []string, limit int, offset int) (*MCPSearchResponse, error) {
+	// Use the new source-based search
+	response, err := SearchMCPServersFromSources(query, sources, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load MCP servers from config: %v", err)
+		return nil, err
 	}
 
-	// Filter servers based on query and category
-	var filteredServers []MCPServer
-	for _, server := range servers {
-		matches := true
-
-		// Filter by query text
-		if query != "" {
-			queryLower := strings.ToLower(query)
-			matches = strings.Contains(strings.ToLower(server.Name), queryLower) ||
-				strings.Contains(strings.ToLower(server.Description), queryLower) ||
-				strings.Contains(strings.ToLower(server.ID), queryLower)
-		}
-
-		// Filter by category
-		if matches && category != "" {
-			matches = server.Category == category
-		}
-
-		if matches {
-			// Ensure status is set to available for search results
-			if server.Status == "" {
-				server.Status = "available"
+	// If category filtering is requested, apply it
+	if category != "" {
+		var filteredResults []MCPServer
+		for _, server := range response.Results {
+			if server.Category == category {
+				filteredResults = append(filteredResults, server)
 			}
-			filteredServers = append(filteredServers, server)
 		}
+		response.Results = filteredResults
 	}
 
-	// Apply pagination
-	total := len(filteredServers)
-	if offset >= total {
-		return &MCPSearchResponse{
-			Query:   query,
-			Results: []MCPServer{},
-			Total:   total,
-			Offset:  offset,
-			Limit:   limit,
-		}, nil
-	}
-
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-
-	return &MCPSearchResponse{
-		Query:   query,
-		Results: filteredServers[offset:end],
-		Total:   total,
-		Offset:  offset,
-		Limit:   limit,
-	}, nil
+	return response, nil
 }
 
 // fetchFromOfficialRegistry fetches MCP servers from mcp.json config file
@@ -237,24 +214,29 @@ func fetchFromOfficialRegistry() ([]MCPServerInfo, error) {
 	return registryData, nil
 }
 
-// fetchFromConfigFile reads MCP servers from mcp.json config file
-func fetchFromConfigFile() ([]MCPServer, error) {
+// fetchMCPSources reads MCP sources from mcp.json config file
+func fetchMCPSources() ([]MCPSource, error) {
 	// Try to read from mcp.json in the project directory first
 	configPath := "mcp/mcp.json"
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Fallback to user's home directory
 		configPath = filepath.Join(os.Getenv("HOME"), ".picoclaw", "mcp", "mcp.json")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			// Try absolute path as fallback
+			configPath = "/Users/huoli4844/Documents/ai_project/picoclaw/mcp/mcp.json"
+		}
 	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read mcp.json: %v", err)
+		return nil, fmt.Errorf("failed to read mcp.json from %s: %v", configPath, err)
 	}
 
 	var config struct {
-		Servers     []MCPServer `json:"servers"`
+		Servers     []MCPSource `json:"servers"`
 		Version     string      `json:"version"`
 		LastUpdated string      `json:"last_updated"`
+		RegistryURL string      `json:"registry_url"`
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
@@ -285,6 +267,15 @@ func createDefaultConfigFile(configPath string) error {
 	}
 
 	return os.WriteFile(configPath, data, 0644)
+}
+
+// extractSourceFromServerID extracts the source prefix from a server ID
+func extractSourceFromServerID(serverID string) string {
+	parts := strings.Split(serverID, "/")
+	if len(parts) >= 2 {
+		return parts[0]
+	}
+	return "unknown"
 }
 
 // Helper functions for processing registry data
@@ -354,10 +345,212 @@ func determineTransport(pkg, remote string) string {
 	return "stdio"
 }
 
+// GetAvailableMCPSources returns a list of available MCP sources
+func GetAvailableMCPSources() ([]string, error) {
+	sources, err := fetchMCPSources()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load MCP sources from config: %v", err)
+	}
+
+	var sourceNames []string
+	for _, source := range sources {
+		sourceNames = append(sourceNames, source.Name)
+	}
+
+	// Sort sources for consistent display
+	sort.Strings(sourceNames)
+	return sourceNames, nil
+}
+
+// SearchMCPServersFromSources searches for MCP servers from specified source websites
+func SearchMCPServersFromSources(query string, sources []string, limit int, offset int) (*MCPSearchResponse, error) {
+	var allServers []MCPServer
+
+	// Get available sources from config
+	availableSources, err := fetchMCPSources()
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch MCP sources: %v", err)
+	}
+
+	// If no specific sources requested, search all sources
+	if len(sources) == 0 {
+		for _, source := range availableSources {
+			sources = append(sources, source.Name)
+		}
+	}
+
+	// Search each source
+	for _, requestedSource := range sources {
+		// Find the source configuration
+		var sourceConfig *MCPSource
+		for _, source := range availableSources {
+			if source.Name == requestedSource {
+				sourceConfig = &source
+				break
+			}
+		}
+
+		if sourceConfig == nil {
+			continue // Skip unknown sources
+		}
+
+		// Fetch servers from this source
+		serversFromSource, err := fetchServersFromSource(*sourceConfig, query)
+		if err != nil {
+			fmt.Printf("Warning: Failed to fetch from source %s: %v\n", sourceConfig.Name, err)
+			continue
+		}
+
+		allServers = append(allServers, serversFromSource...)
+	}
+
+	// Apply pagination
+	total := len(allServers)
+	start := offset
+	end := start + limit
+	if end > total {
+		end = total
+	}
+
+	if start >= total {
+		return &MCPSearchResponse{
+			Query:   query,
+			Results: []MCPServer{},
+			Total:   total,
+			Offset:  offset,
+			Limit:   limit,
+		}, nil
+	}
+
+	return &MCPSearchResponse{
+		Query:   query,
+		Results: allServers[start:end],
+		Total:   total,
+		Offset:  offset,
+		Limit:   limit,
+	}, nil
+}
+
+// fetchServersFromSource fetches MCP servers from a specific source website
+func fetchServersFromSource(source MCPSource, query string) ([]MCPServer, error) {
+	// For now, create a mock implementation that returns sample servers
+	// In a real implementation, this would make HTTP requests to the source websites
+
+	var servers []MCPServer
+
+	// Mock data based on source name and query
+	switch source.Name {
+	case "pulsemcp":
+		queryLower := strings.ToLower(query)
+		if query == "" || strings.Contains(queryLower, "file") || strings.Contains(queryLower, "filesystem") {
+			servers = append(servers, MCPServer{
+				ID:          "pulsemcp/filesystem",
+				Name:        "Filesystem Server",
+				Description: "File system operations from PulseMCP",
+				Version:     "1.0.0",
+				Author:      "PulseMCP",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/pulsemcp/filesystem",
+				License:     "MIT",
+				Keywords:    []string{"filesystem", "files", "directory", "io"},
+				Category:    "filesystem",
+				Transport:   "stdio",
+				Status:      "available",
+			})
+		}
+		if query == "" || strings.Contains(queryLower, "database") || strings.Contains(queryLower, "db") {
+			servers = append(servers, MCPServer{
+				ID:          "pulsemcp/database",
+				Name:        "Database Server",
+				Description: "Database operations from PulseMCP",
+				Version:     "1.0.0",
+				Author:      "PulseMCP",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/pulsemcp/database",
+				License:     "Apache-2.0",
+				Keywords:    []string{"database", "db", "sql", "storage"},
+				Category:    "database",
+				Transport:   "stdio",
+				Status:      "available",
+			})
+		}
+	case "mcp.so":
+		queryLower := strings.ToLower(query)
+		if query == "" || strings.Contains(queryLower, "search") {
+			servers = append(servers, MCPServer{
+				ID:          "mcp.so/web-search",
+				Name:        "Web Search",
+				Description: "Web search functionality from MCP.so",
+				Version:     "2.0.0",
+				Author:      "MCP.so",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/mcpso/web-search",
+				License:     "MIT",
+				Keywords:    []string{"search", "web", "internet", "query"},
+				Category:    "utilities",
+				Transport:   "sse",
+				Status:      "available",
+			})
+		}
+		if query == "" || strings.Contains(queryLower, "file") || strings.Contains(queryLower, "filesystem") {
+			servers = append(servers, MCPServer{
+				ID:          "mcp.so/file-manager",
+				Name:        "File Manager",
+				Description: "File management and operations from MCP.so",
+				Version:     "1.5.0",
+				Author:      "MCP.so",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/mcpso/file-manager",
+				License:     "MIT",
+				Keywords:    []string{"file", "manager", "filesystem", "io"},
+				Category:    "filesystem",
+				Transport:   "stdio",
+				Status:      "available",
+			})
+		}
+	case "mcpservers":
+		queryLower := strings.ToLower(query)
+		if query == "" || strings.Contains(queryLower, "tools") || strings.Contains(queryLower, "dev") {
+			servers = append(servers, MCPServer{
+				ID:          "mcpservers/development-tools",
+				Name:        "Development Tools",
+				Description: "Development tools from MCPServers.org",
+				Version:     "1.5.0",
+				Author:      "MCPServers",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/mcpservers/development-tools",
+				License:     "BSD-3-Clause",
+				Keywords:    []string{"development", "tools", "dev", "programming"},
+				Category:    "development",
+				Transport:   "websocket",
+				Status:      "available",
+			})
+		}
+		if query == "" || strings.Contains(queryLower, "file") || strings.Contains(queryLower, "filesystem") {
+			servers = append(servers, MCPServer{
+				ID:          "mcpservers/file-explorer",
+				Name:        "File Explorer",
+				Description: "File exploration and management from MCPServers.org",
+				Version:     "2.0.0",
+				Author:      "MCPServers",
+				Homepage:    source.Homepage,
+				Repository:  "https://github.com/mcpservers/file-explorer",
+				License:     "GPL-3.0",
+				Keywords:    []string{"file", "explorer", "filesystem", "browser"},
+				Category:    "filesystem",
+				Transport:   "stdio",
+				Status:      "available",
+			})
+		}
+	}
+
+	return servers, nil
+}
+
 // GetMCPServerFromRegistry fetches MCP server configuration from external registry
 func GetMCPServerFromRegistry(serverID string) (*MCPServer, error) {
 	// Search the online registry for the specific server
-	response, err := SearchMCPServersOnline("", "", 100, 0)
+	response, err := SearchMCPServersOnline("", "", nil, 100, 0)
 	if err != nil {
 		return nil, err
 	}

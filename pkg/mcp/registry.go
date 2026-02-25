@@ -68,7 +68,7 @@ func (r *Registry) loadInstalledServers() error {
 // SearchServers searches for available MCP servers
 func (r *Registry) SearchServers(req MCPSearchRequest) (*MCPSearchResponse, error) {
 	// Search online MCP servers first
-	response, err := SearchMCPServersOnline(req.Query, req.Category, req.Limit, req.Offset)
+	response, err := SearchMCPServersOnline(req.Query, req.Category, req.Sources, req.Limit, req.Offset)
 	if err != nil {
 		return nil, err
 	}

@@ -213,6 +213,10 @@ export function useApi() {
     return request<McpServer[]>('/mcp/servers')
   }, [request])
 
+  const getMcpSources = useCallback(async (): Promise<ApiResponse<string[]>> => {
+    return request<string[]>('/mcp/sources')
+  }, [request])
+
   const searchMcpServers = useCallback(async (requestObj: McpSearchRequest): Promise<ApiResponse<McpSearchResponse>> => {
     return request<McpSearchResponse>('/mcp/search', {
       method: 'POST',
@@ -264,6 +268,7 @@ export function useApi() {
     installSkill,
     // MCP methods
     getMcpServers,
+    getMcpSources,
     searchMcpServers,
     installMcpServer,
     uninstallMcpServer,
