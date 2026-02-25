@@ -107,18 +107,28 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+      {/* Search Bar */}
+      <div className="border-b p-4">
+        <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Package className="w-8 h-8 text-primary" />
+              <Package className="w-6 h-6 text-primary" />
               <div>
-                <h1 className="text-xl font-semibold">技能管理</h1>
+                <h2 className="text-lg font-semibold">技能管理</h2>
                 <p className="text-sm text-muted-foreground">管理 PicoClaw 技能</p>
               </div>
             </div>
+            </div>
             <div className="flex items-center gap-2">
+              <div className="relative mr-2">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="搜索技能..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-64"
+                />
+              </div>
               <Button
                 variant="outline"
                 onClick={() => setIsSearchOpen(true)}
@@ -127,25 +137,7 @@ export function SkillsPage({ onBack }: SkillsPageProps) {
                 <Plus className="w-4 h-4" />
                 安装技能
               </Button>
-              <Button variant="outline" onClick={onBack}>
-                返回聊天
-              </Button>
             </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Search Bar */}
-      <div className="border-b p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="搜索技能..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
           </div>
         </div>
       </div>

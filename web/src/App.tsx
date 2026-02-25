@@ -146,35 +146,7 @@ function App() {
     )
   }
 
-  if (currentView === 'skills') {
-    return (
-      <ThemeProvider>
-        <SkillsPage onBack={() => setCurrentView('chat')} />
-      </ThemeProvider>
-    )
-  }
 
-  if (currentView === 'mcp') {
-    return (
-      <ThemeProvider>
-        <McpPage onBack={() => setCurrentView('chat')} />
-      </ThemeProvider>
-    )
-  }
-
-  if (currentView === 'settings') {
-    return (
-      <ThemeProvider>
-        <SettingsPage
-          onBack={() => setCurrentView('chat')}
-          models={models}
-          onModelsChange={handleModelsChange}
-          selectedModel={selectedModel}
-          onSelectedModelChange={handleSelectedModelChange}
-        />
-      </ThemeProvider>
-    )
-  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -203,19 +175,39 @@ function App() {
           />
         </div>
 
-        {/* MultiChat Component */}
+        {/* Main Content Area */}
         <div className="flex-1 min-h-0">
-          <MultiChat
-            conversations={conversations}
-            activeConversationId={activeConversationId}
-            activeConversation={activeConversation}
-            isLoading={isLoading}
-            onConversationCreate={createConversation}
-            onConversationSelect={selectConversation}
-            onConversationDelete={deleteConversation}
-            onConversationRename={renameConversation}
-            onSendMessage={sendMessage}
-          />
+          {currentView === 'chat' && (
+            <MultiChat
+              conversations={conversations}
+              activeConversationId={activeConversationId}
+              activeConversation={activeConversation}
+              isLoading={isLoading}
+              onConversationCreate={createConversation}
+              onConversationSelect={selectConversation}
+              onConversationDelete={deleteConversation}
+              onConversationRename={renameConversation}
+              onSendMessage={sendMessage}
+            />
+          )}
+          
+          {currentView === 'skills' && (
+            <SkillsPage onBack={() => setCurrentView('chat')} />
+          )}
+          
+          {currentView === 'mcp' && (
+            <McpPage onBack={() => setCurrentView('chat')} />
+          )}
+          
+          {currentView === 'settings' && (
+            <SettingsPage
+              onBack={() => setCurrentView('chat')}
+              models={models}
+              onModelsChange={handleModelsChange}
+              selectedModel={selectedModel}
+              onSelectedModelChange={handleSelectedModelChange}
+            />
+          )}
         </div>
       </div>
     </div>

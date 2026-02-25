@@ -151,18 +151,27 @@ export function McpPage({ onBack }: McpPageProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+      {/* Search Bar */}
+      <div className="border-b p-4">
+        <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Server className="w-8 h-8 text-primary" />
+              <Server className="w-6 h-6 text-primary" />
               <div>
-                <h1 className="text-xl font-semibold">MCP 服务器管理</h1>
+                <h2 className="text-lg font-semibold">MCP 服务器管理</h2>
                 <p className="text-sm text-muted-foreground">管理 Model Context Protocol 服务器</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <div className="relative mr-2">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="搜索 MCP 服务器..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-64"
+                />
+              </div>
               <Button
                 variant="outline"
                 onClick={() => setIsSearchOpen(true)}
@@ -171,25 +180,7 @@ export function McpPage({ onBack }: McpPageProps) {
                 <Search className="w-4 h-4" />
                 搜索服务器
               </Button>
-              <Button variant="outline" onClick={onBack}>
-                返回聊天
-              </Button>
             </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Search Bar */}
-      <div className="border-b p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="搜索 MCP 服务器..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
           </div>
         </div>
       </div>
