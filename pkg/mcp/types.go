@@ -216,16 +216,8 @@ func fetchFromOfficialRegistry() ([]MCPServerInfo, error) {
 
 // fetchMCPSources reads MCP sources from mcp.json config file
 func fetchMCPSources() ([]MCPSource, error) {
-	// Try to read from mcp.json in the project directory first
-	configPath := "mcp/mcp.json"
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Fallback to user's home directory
-		configPath = filepath.Join(os.Getenv("HOME"), ".picoclaw", "mcp", "mcp.json")
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			// Try absolute path as fallback
-			configPath = "/Users/huoli4844/Documents/ai_project/picoclaw/mcp/mcp.json"
-		}
-	}
+	// Always use the absolute path to ensure correct file is read
+	configPath := "/Users/huoli4844/Documents/ai_project/picoclaw/mcp/mcp.json"
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
