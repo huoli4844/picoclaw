@@ -46,6 +46,14 @@
     }
   ],
   "channels": {
+    "nats": {
+      "enabled": true,
+      "url": "nats://171.221.201.55:24222",
+      "websocket": "wss://171.221.201.55:28444",
+      "topic": "chatbot.user.888",
+      "enable_jetstream": true,
+      "allow_from": []
+    },
     "telegram": {
       "enabled": false,
       "token": "YOUR_TELEGRAM_BOT_TOKEN",

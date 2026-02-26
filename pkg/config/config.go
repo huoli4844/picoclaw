@@ -202,6 +202,7 @@ type ChannelsConfig struct {
 	OneBot   OneBotConfig   `json:"onebot"`
 	WeCom    WeComConfig    `json:"wecom"`
 	WeComApp WeComAppConfig `json:"wecom_app"`
+	NATS     NATSConfig     `json:"nats"`
 }
 
 type WhatsAppConfig struct {
@@ -245,6 +246,15 @@ type QQConfig struct {
 	AppID     string              `json:"app_id"     env:"PICOCLAW_CHANNELS_QQ_APP_ID"`
 	AppSecret string              `json:"app_secret" env:"PICOCLAW_CHANNELS_QQ_APP_SECRET"`
 	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_QQ_ALLOW_FROM"`
+}
+
+type NATSConfig struct {
+	Enabled         bool                `json:"enabled"         env:"PICOCLAW_CHANNELS_NATS_ENABLED"`
+	URL             string              `json:"url"             env:"PICOCLAW_CHANNELS_NATS_URL"`
+	WebSocket       string              `json:"websocket"       env:"PICOCLAW_CHANNELS_NATS_WEBSOCKET"`
+	Topic           string              `json:"topic"           env:"PICOCLAW_CHANNELS_NATS_TOPIC"`
+	EnableJetStream bool                `json:"enable_jetstream" env:"PICOCLAW_CHANNELS_NATS_ENABLE_JETSTREAM"`
+	AllowFrom       FlexibleStringSlice `json:"allow_from"      env:"PICOCLAW_CHANNELS_NATS_ALLOW_FROM"`
 }
 
 type DingTalkConfig struct {

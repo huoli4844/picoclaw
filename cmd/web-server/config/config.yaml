@@ -1,0 +1,81 @@
+# NATS 配置（聊天系统消息中间件）
+nats:
+  # 连接配置
+  host: "171.221.201.55"  # NATS 服务器地址
+  port: 24222  # NATS 主端口
+  url: "nats://171.221.201.55:24222"  # NATS 完整连接地址
+  
+  # 管理和监控端口
+  monitorPort: 28222  # HTTP 监控端口（访问 http://host:8222 查看状态）
+  
+  # WebSocket 配置
+  websocket:
+    enabled: true  # 是否启用 WebSocket
+    port: 28444  # WebSocket 端口（生产环境使用TLS端口）
+    url: "wss://171.221.201.55:28444"  # WebSocket 完整连接地址（生产环境使用wss）
+    # noTLS: true  # 是否禁用 TLS（生产环境启用TLS，注释掉）
+    # compression: true  # 是否启用压缩
+  
+  # 如果 NATS 服务器需要认证，取消下面的注释
+  # user: "your_username"
+  # password: "your_password"
+  # token: "your_token"  # 或者使用 token 认证
+  
+  # 连接配置
+  name: "gfast-chat-service"  # 客户端连接名称
+  maxReconnect: -1  # 最大重连次数，-1 表示无限重连
+  reconnectWait: "2s"  # 重连等待时间
+  timeout: "5s"  # 连接超时时间
+  pingInterval: "2m"  # ping 间隔
+  maxPingsOut: 2  # 最大未响应 ping 数
+  
+  # JetStream 配置（消息持久化）
+  jetstream:
+    enabled: true  # 是否启用 JetStream
+    maxWait: "5s"  # 操作最大等待时间
+    # 消息保留策略
+    messageRetention: "30d"  # 消息保留时间（30天后归档到 PostgreSQL）
+    maxMsgsPerStream: 1000000  # 每个流最大消息数
+    maxBytesPerStream: "10GB"  # 每个流最大字节数
+  
+  # KV Store 配置（热数据存储）
+  kvStore:
+    enabled: true  # 是否启用 KV Store
+    # KV Bucket 配置
+    buckets:
+      - name: "chat_user_status"  # 用户在线状态
+        ttl: "5m"  # 5分钟过期
+        maxBytes: "100MB"
+      
+      - name: "chat_conv_active"  # 会话活跃数据
+        ttl: "0"  # 不过期
+        maxBytes: "500MB"
+      
+      - name: "chat_unread"  # 未读计数
+        ttl: "0"  # 不过期
+        maxBytes: "200MB"
+      
+      - name: "chat_user_conv_config"  # 用户会话配置
+        ttl: "0"  # 不过期
+        maxBytes: "500MB"
+      
+      - name: "chat_group_config"  # 群组动态配置
+        ttl: "0"  # 不过期
+        maxBytes: "500MB"
+  
+  # Object Store 配置（小文件存储）
+  objectStore:
+    enabled: true  # 是否启用 Object Store
+    buckets:
+      - name: "chat_files_audio"  # 语音消息
+        maxBytes: "10GB"
+      
+      - name: "chat_files_thumbnail"  # 图片缩略图
+        maxBytes: "20GB"
+      
+      - name: "chat_files_temp"  # 临时文件
+        maxBytes: "5GB"
+        ttl: "24h"  # 24小时后自动清理
+      
+      - name: "chat_files_emoji"  # 表情包
+        maxBytes: "2GB"

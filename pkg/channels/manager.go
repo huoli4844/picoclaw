@@ -124,6 +124,19 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
+	if m.config.Channels.NATS.Enabled && m.config.Channels.NATS.URL != "" {
+		logger.DebugC("channels", "Attempting to initialize NATS channel")
+		nats, err := NewNATSChannel(m.config.Channels.NATS, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize NATS channel", map[string]any{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["nats"] = nats
+			logger.InfoC("channels", "NATS channel enabled successfully")
+		}
+	}
+
 	if m.config.Channels.DingTalk.Enabled && m.config.Channels.DingTalk.ClientID != "" {
 		logger.DebugC("channels", "Attempting to initialize DingTalk channel")
 		dingtalk, err := NewDingTalkChannel(m.config.Channels.DingTalk, m.bus)

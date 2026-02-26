@@ -48,3 +48,4 @@ tasks/
 dist/
 /web/node_modules/
 /web-server
+/web/.vite/
