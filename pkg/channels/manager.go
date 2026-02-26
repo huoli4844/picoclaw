@@ -126,7 +126,7 @@ func (m *Manager) initChannels() error {
 
 	if m.config.Channels.NATS.Enabled && m.config.Channels.NATS.URL != "" {
 		logger.DebugC("channels", "Attempting to initialize NATS channel")
-		nats, err := NewNATSChannel(m.config.Channels.NATS, m.bus)
+		nats, err := NewSimpleNATSChannel(m.config.Channels.NATS, m.bus)
 		if err != nil {
 			logger.ErrorCF("channels", "Failed to initialize NATS channel", map[string]any{
 				"error": err.Error(),
@@ -134,6 +134,20 @@ func (m *Manager) initChannels() error {
 		} else {
 			m.channels["nats"] = nats
 			logger.InfoC("channels", "NATS channel enabled successfully")
+		}
+	}
+
+	// 初始化InternalIM Channel
+	if m.config.Channels.InternalIM.Enabled && m.config.Channels.InternalIM.URL != "" {
+		logger.DebugC("channels", "Attempting to initialize InternalIM channel")
+		internalIM, err := NewInternalIMChannel(m.config.Channels.InternalIM, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize InternalIM channel", map[string]any{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["internal-im"] = internalIM
+			logger.InfoC("channels", "InternalIM channel enabled successfully")
 		}
 	}
 

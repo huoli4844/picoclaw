@@ -139,6 +139,28 @@
       "webhook_path": "/webhook/wecom-app",
       "allow_from": [],
       "reply_timeout": 5
+    },
+    "internal_im": {
+      "_comment": "Internal IM - Custom IM system using NATS for communication",
+      "enabled": false,
+      "url": "nats://171.221.201.55:24222",
+      "websocket": "",
+      "topic": "picoclaw.im",
+      "response_topic": "picoclaw.im.out",
+      "timeout": 30,
+      "max_retries": 3,
+      "enable_jetstream": false,
+      "enable_streaming": false,
+      "allow_from": ["*"]
+    },
+    "nats": {
+      "_comment": "NATS Channel - General purpose NATS communication",
+      "enabled": false,
+      "url": "nats://localhost:4222",
+      "websocket": "ws://localhost:9222",
+      "topic": "picoclaw.nats",
+      "enable_jetstream": false,
+      "allow_from": ["*"]
     }
   },
   "providers": {

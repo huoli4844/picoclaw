@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sipeed/picoclaw/pkg/agent"
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/mcp"
@@ -28,6 +30,7 @@ var (
 	skillsWorkspace string
 	mcpRegistry     *mcp.Registry
 	conversationSvc *services.ConversationService
+	channelsManager *channels.Manager
 )
 
 // 全局日志处理器，用于捕获日志并发送到适配器
@@ -93,6 +96,23 @@ func initServices() error {
 	mcpRegistry, err = mcp.NewRegistry("", mcpStoragePath)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize MCP registry: %v", err)
+	}
+
+	// 初始化Channel Manager
+	if cfg != nil {
+		msgBus := bus.NewMessageBus()
+		channelsManager, err = channels.NewManager(cfg, msgBus)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize channels manager: %v", err)
+		} else {
+			// 启动Channel Manager
+			ctx := context.Background()
+			if err := channelsManager.StartAll(ctx); err != nil {
+				log.Printf("Warning: Failed to start channels manager: %v", err)
+			} else {
+				log.Println("✅ Channels manager started successfully")
+			}
+		}
 	}
 
 	return nil

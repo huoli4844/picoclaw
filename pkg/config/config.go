@@ -190,19 +190,20 @@ func (d *AgentDefaults) GetModelName() string {
 }
 
 type ChannelsConfig struct {
-	WhatsApp WhatsAppConfig `json:"whatsapp"`
-	Telegram TelegramConfig `json:"telegram"`
-	Feishu   FeishuConfig   `json:"feishu"`
-	Discord  DiscordConfig  `json:"discord"`
-	MaixCam  MaixCamConfig  `json:"maixcam"`
-	QQ       QQConfig       `json:"qq"`
-	DingTalk DingTalkConfig `json:"dingtalk"`
-	Slack    SlackConfig    `json:"slack"`
-	LINE     LINEConfig     `json:"line"`
-	OneBot   OneBotConfig   `json:"onebot"`
-	WeCom    WeComConfig    `json:"wecom"`
-	WeComApp WeComAppConfig `json:"wecom_app"`
-	NATS     NATSConfig     `json:"nats"`
+	WhatsApp   WhatsAppConfig   `json:"whatsapp"`
+	Telegram   TelegramConfig   `json:"telegram"`
+	Feishu     FeishuConfig     `json:"feishu"`
+	Discord    DiscordConfig    `json:"discord"`
+	MaixCam    MaixCamConfig    `json:"maixcam"`
+	QQ         QQConfig         `json:"qq"`
+	DingTalk   DingTalkConfig   `json:"dingtalk"`
+	Slack      SlackConfig      `json:"slack"`
+	LINE       LINEConfig       `json:"line"`
+	OneBot     OneBotConfig     `json:"onebot"`
+	WeCom      WeComConfig      `json:"wecom"`
+	WeComApp   WeComAppConfig   `json:"wecom_app"`
+	InternalIM InternalIMConfig `json:"internal_im"`
+	NATS       NATSConfig       `json:"nats"`
 }
 
 type WhatsAppConfig struct {
@@ -246,6 +247,33 @@ type QQConfig struct {
 	AppID     string              `json:"app_id"     env:"PICOCLAW_CHANNELS_QQ_APP_ID"`
 	AppSecret string              `json:"app_secret" env:"PICOCLAW_CHANNELS_QQ_APP_SECRET"`
 	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_QQ_ALLOW_FROM"`
+}
+
+// RateLimitConfig 速率限制配置
+type RateLimitConfig struct {
+	MessagesPerMinute int `json:"messages_per_minute" env:"PICOCLAW_CHANNELS_INTERNAL_IM_RATE_LIMIT_MESSAGES_PER_MINUTE"`
+	BurstSize         int `json:"burst_size"          env:"PICOCLAW_CHANNELS_INTERNAL_IM_RATE_LIMIT_BURST_SIZE"`
+}
+
+// MessageRetentionConfig 消息保留配置
+type MessageRetentionConfig struct {
+	MaxAgeHours int `json:"max_age_hours" env:"PICOCLAW_CHANNELS_INTERNAL_IM_MESSAGE_RETENTION_MAX_AGE_HOURS"`
+	MaxCount    int `json:"max_count"    env:"PICOCLAW_CHANNELS_INTERNAL_IM_MESSAGE_RETENTION_MAX_COUNT"`
+}
+
+type InternalIMConfig struct {
+	Enabled          bool                    `json:"enabled"             env:"PICOCLAW_CHANNELS_INTERNAL_IM_ENABLED"`
+	URL              string                  `json:"url"                 env:"PICOCLAW_CHANNELS_INTERNAL_IM_URL"`
+	WebSocket        string                  `json:"websocket"           env:"PICOCLAW_CHANNELS_INTERNAL_IM_WEBSOCKET"`
+	Topic            string                  `json:"topic"               env:"PICOCLAW_CHANNELS_INTERNAL_IM_TOPIC"`
+	ResponseTopic    string                  `json:"response_topic"       env:"PICOCLAW_CHANNELS_INTERNAL_IM_RESPONSE_TOPIC"`
+	Timeout          int                     `json:"timeout"             env:"PICOCLAW_CHANNELS_INTERNAL_IM_TIMEOUT"`
+	MaxRetries       int                     `json:"max_retries"          env:"PICOCLAW_CHANNELS_INTERNAL_IM_MAX_RETRIES"`
+	EnableJetStream  bool                    `json:"enable_jetstream"     env:"PICOCLAW_CHANNELS_INTERNAL_IM_ENABLE_JETSTREAM"`
+	EnableStreaming  bool                    `json:"enable_streaming"     env:"PICOCLAW_CHANNELS_INTERNAL_IM_ENABLE_STREAMING"`
+	AllowFrom        FlexibleStringSlice     `json:"allow_from"          env:"PICOCLAW_CHANNELS_INTERNAL_IM_ALLOW_FROM"`
+	RateLimit        *RateLimitConfig        `json:"rate_limit"                     env:"PICOCLAW_CHANNELS_INTERNAL_IM_RATE_LIMIT"`
+	MessageRetention *MessageRetentionConfig `json:"message_retention"               env:"PICOCLAW_CHANNELS_INTERNAL_IM_MESSAGE_RETENTION"`
 }
 
 type NATSConfig struct {

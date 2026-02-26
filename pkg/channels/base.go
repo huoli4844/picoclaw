@@ -47,6 +47,13 @@ func (c *BaseChannel) IsAllowed(senderID string) bool {
 		return true
 	}
 
+	// Check for wildcard allow
+	for _, allowed := range c.allowList {
+		if allowed == "*" {
+			return true
+		}
+	}
+
 	// Extract parts from compound senderID like "123456|username"
 	idPart := senderID
 	userPart := ""
