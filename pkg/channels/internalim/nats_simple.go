@@ -1,4 +1,4 @@
-package channels
+package internalim
 
 import (
 	"context"
@@ -81,7 +81,7 @@ func (c *SimpleNATSChannel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to subscribe topic %s: %w", c.config.Topic, err)
 	}
 
-	c.setRunning(true)
+	c.SetRunning(true)
 	logger.InfoCF("nats", "Simple NATS channel started successfully", map[string]any{
 		"topic": c.config.Topic,
 		"url":   c.config.URL,
@@ -92,7 +92,7 @@ func (c *SimpleNATSChannel) Start(ctx context.Context) error {
 
 func (c *SimpleNATSChannel) Stop(ctx context.Context) error {
 	logger.InfoC("nats", "Stopping simple NATS channel")
-	c.setRunning(false)
+	c.SetRunning(false)
 
 	if c.cancel != nil {
 		c.cancel()
@@ -256,7 +256,10 @@ func (c *SimpleNATSChannel) handleMessage() func(msg *natsgo.Msg) {
 		}
 
 		// 转发到PicoClaw消息总线
-		c.HandleMessage(userID, userID, natsMsg.Content, []string{}, metadata)
+		c.HandleMessage(context.Background(), bus.Peer{
+			Kind: "direct",
+			ID:   userID,
+		}, generateMessageIDSimple(), userID, userID, natsMsg.Content, []string{}, metadata)
 	}
 }
 

@@ -1,4 +1,4 @@
-package channels
+package internalim
 
 import (
 	"context"
@@ -117,7 +117,7 @@ func (c *InternalIMChannel) Start(ctx context.Context) error {
 	// 启动消息总线监听（发送响应到IM机器人）
 	go c.listenToOutboundMessages()
 
-	c.setRunning(true)
+	c.SetRunning(true)
 	logger.InfoCF("internal-im", "Internal IM channel started successfully", map[string]any{
 		"topic": c.config.Topic,
 		"url":   c.config.URL,
@@ -155,7 +155,7 @@ func (c *InternalIMChannel) Stop(ctx context.Context) error {
 		c.nc.Close()
 	}
 
-	c.setRunning(false)
+	c.SetRunning(false)
 	logger.InfoC("internal-im", "Internal IM channel stopped successfully")
 	return nil
 }
@@ -302,7 +302,7 @@ func (c *InternalIMChannel) handleMessage() func(msg *natsgo.Msg) {
 		}
 
 		// 发送到消息总线
-		c.bus.PublishInbound(picoclawMsg)
+		c.Bus.PublishInbound(c.ctx, picoclawMsg)
 
 		// 记录发送的消息ID用于错误处理
 		messageID := c.generateMessageID()
@@ -353,8 +353,19 @@ func (c *InternalIMChannel) handlePlainTextMessage(msg *natsgo.Msg) {
 		"message_type": "plain_text",
 	}
 
+	// 生成消息ID
+	messageID := c.generateMessageID()
+
 	// 转发到PicoClaw消息总线
-	c.HandleMessage(userID, userID, content, []string{}, metadata)
+	c.HandleMessage(c.ctx, bus.Peer{
+		Kind: "direct",
+		ID:   userID,
+	}, messageID, userID, userID, content, []string{}, metadata,
+		bus.SenderInfo{
+			Platform:   "internal-im",
+			PlatformID: userID,
+			Username:   userID, // 对于纯文本消息，使用userID作为username
+		})
 }
 
 func (c *InternalIMChannel) extractUserIDFromTopic(topic string) string {
@@ -445,7 +456,7 @@ func (c *InternalIMChannel) listenToOutboundMessages() {
 			ctx, cancel := context.WithTimeout(c.ctx, 100*time.Millisecond)
 
 			// 尝试订阅出站消息
-			msg, ok := c.bus.SubscribeOutbound(ctx)
+			msg, ok := c.Bus.SubscribeOutbound(ctx)
 			cancel()
 
 			if !ok {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
+	"github.com/sipeed/picoclaw/pkg/channels/internalim"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
 
@@ -39,7 +39,7 @@ func TestPicoClawNATSChannel(t *testing.T) {
 		messageBus := bus.NewMessageBus()
 
 		// 创建NATS Channel
-		channel, err := channels.NewSimpleNATSChannel(cfg, messageBus)
+		channel, err := internalim.NewSimpleNATSChannel(cfg, messageBus)
 		if err != nil {
 			t.Fatalf("❌ 创建NATS Channel失败: %v", err)
 		}
@@ -120,7 +120,7 @@ func TestPicoClawNATSChannel(t *testing.T) {
 		}()
 
 		// 创建NATS Channel
-		channel, err := channels.NewSimpleNATSChannel(cfg, messageBus)
+		channel, err := internalim.NewSimpleNATSChannel(cfg, messageBus)
 		if err != nil {
 			t.Fatalf("❌ 创建NATS Channel失败: %v", err)
 		}
@@ -250,7 +250,7 @@ func TestPicoClawNATSChannel(t *testing.T) {
 		}()
 
 		// 创建NATS Channel
-		channel, err := channels.NewSimpleNATSChannel(cfg, messageBus)
+		channel, err := internalim.NewSimpleNATSChannel(cfg, messageBus)
 		if err != nil {
 			t.Fatalf("❌ 创建NATS Channel失败: %v", err)
 		}
@@ -363,7 +363,7 @@ func TestPicoClawNATSChannel(t *testing.T) {
 		}()
 
 		// 创建NATS Channel
-		channel, err := channels.NewSimpleNATSChannel(cfg, messageBus)
+		channel, err := internalim.NewSimpleNATSChannel(cfg, messageBus)
 		if err != nil {
 			t.Fatalf("❌ 创建NATS Channel失败: %v", err)
 		}

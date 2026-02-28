@@ -15,6 +15,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/mcp"
+	"github.com/sipeed/picoclaw/pkg/media"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
 
@@ -101,7 +102,8 @@ func initServices() error {
 	// 初始化Channel Manager
 	if cfg != nil {
 		msgBus := bus.NewMessageBus()
-		channelsManager, err = channels.NewManager(cfg, msgBus)
+		mediaStore := media.NewFileMediaStore()
+		channelsManager, err = channels.NewManager(cfg, msgBus, mediaStore)
 		if err != nil {
 			log.Printf("Warning: Failed to initialize channels manager: %v", err)
 		} else {

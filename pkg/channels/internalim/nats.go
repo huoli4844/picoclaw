@@ -1,4 +1,4 @@
-package channels
+package internalim
 
 import (
 	"context"
@@ -222,7 +222,7 @@ func (c *NATSChannel) Start(ctx context.Context) error {
 	// 等待Router启动
 	time.Sleep(100 * time.Millisecond)
 
-	c.setRunning(true)
+	c.SetRunning(true)
 	logger.InfoCF("nats", "NATS channel started successfully with Watermill", map[string]any{
 		"topic":             c.config.Topic,
 		"url":               c.config.URL,
@@ -234,7 +234,7 @@ func (c *NATSChannel) Start(ctx context.Context) error {
 
 func (c *NATSChannel) Stop(ctx context.Context) error {
 	logger.InfoC("nats", "Stopping NATS channel with Watermill")
-	c.setRunning(false)
+	c.SetRunning(false)
 
 	if c.cancel != nil {
 		c.cancel()
@@ -299,7 +299,7 @@ func (c *NATSChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	// 构造响应消息 - 简化结构
 	response := NATSResponse{
 		Type:      "response",
-		MessageID: generateMessageID(),
+		MessageID: generateMessageIDNATS(),
 		Content:   msg.Content,
 		Model:     "deepseek",
 		Timestamp: getCurrentTimestamp(),
@@ -313,7 +313,7 @@ func (c *NATSChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	}
 
 	wmMsg := message.NewMessage(
-		generateMessageID(),
+		generateMessageIDNATS(),
 		responseBytes,
 	)
 
@@ -516,7 +516,10 @@ func (c *NATSChannel) handleWatermillMessageNoPublisher() func(msg *message.Mess
 		}
 
 		// 转发到PicoClaw消息总线
-		c.HandleMessage(userID, userID, content, []string{}, metadata)
+		c.HandleMessage(context.Background(), bus.Peer{
+			Kind: "direct",
+			ID:   userID,
+		}, generateMessageIDNATS(), userID, userID, content, []string{}, metadata)
 
 		// 确认消息处理成功
 		msg.Ack()
@@ -545,6 +548,10 @@ func recoverMiddleware(logger watermill.LoggerAdapter) message.HandlerMiddleware
 
 func getCurrentTimestamp() int64 {
 	return time.Now().UnixMilli()
+}
+
+func generateMessageIDNATS() string {
+	return fmt.Sprintf("nats_%d", time.Now().UnixNano())
 }
 
 // createStreamIfNotExists 创建Stream（如果不存在）- 参考 watermill_nats_test.go 最佳实践
@@ -594,10 +601,6 @@ func getStreamName(topic string) string {
 	// 将topic中的点替换为下划线，并添加前缀
 	streamName := strings.ReplaceAll(topic, ".", "_")
 	return fmt.Sprintf("PICOCLAW_%s", strings.ToUpper(streamName))
-}
-
-func generateMessageID() string {
-	return fmt.Sprintf("msg_%d", time.Now().UnixNano())
 }
 
 // selectTargetTopic 根据ChatID智能选择目标主题 - 支持单聊和群聊
