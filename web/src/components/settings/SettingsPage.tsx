@@ -17,7 +17,7 @@ interface SettingsPageProps {
   onSelectedModelChange: (model: string) => void
 }
 
-export function SettingsPage({ onBack, models, onModelsChange, selectedModel, onSelectedModelChange }: SettingsPageProps) {
+export function SettingsPage({ onBack: _onBack, models, onModelsChange, selectedModel, onSelectedModelChange }: SettingsPageProps) {
   const { theme, setTheme } = useTheme()
   const [activeSection, setActiveSection] = useState('general')
   

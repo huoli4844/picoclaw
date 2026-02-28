@@ -102,7 +102,7 @@ export function useFileBrowser(): UseFileBrowserReturn {
     }
   }, [currentPath, listFiles])
 
-  const deleteFileOrDirectory = useCallback(async (path: string, isDir: boolean): Promise<boolean> => {
+  const deleteFileOrDirectory = useCallback(async (path: string, _isDir: boolean): Promise<boolean> => {
     try {
       const response = await fetch('http://localhost:8080/api/file-delete', {
         method: 'DELETE',

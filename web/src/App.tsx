@@ -71,10 +71,7 @@ function App() {
 
   const handleChatClick = () => {
     setCurrentView('chat')
-    // 如果当前在聊天视图，创建新的对话
-    if (currentView === 'chat') {
-      createConversation()
-    }
+    // 不再自动创建对话，用户可以手动点击"+"按钮创建
   }
 
   const handleModelsChange = async (newModels: Model[]) => {

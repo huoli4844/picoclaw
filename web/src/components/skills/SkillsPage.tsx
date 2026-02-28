@@ -15,7 +15,7 @@ interface SkillsPageProps {
   onBack: () => void
 }
 
-export function SkillsPage({ onBack }: SkillsPageProps) {
+export function SkillsPage({ onBack: _onBack }: SkillsPageProps) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)

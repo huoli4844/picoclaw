@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { FileBrowserProps } from './types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -10,13 +10,10 @@ import {
   Image, 
   Archive,
   Code,
-  Settings,
   Database,
-  Mail,
   LogIn,
   ChevronRight,
   Eye,
-  Download,
   Trash2
 } from 'lucide-react'
 

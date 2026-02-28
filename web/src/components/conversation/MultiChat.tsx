@@ -141,6 +141,7 @@ interface LoadHistoryDialogProps {
 function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHistoryDialogProps) {
   const [availableConversations, setAvailableConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // 获取所有历史对话文件
   const loadAvailableConversations = async () => {
@@ -165,10 +166,10 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
     }
   }
 
-  // 对话框打开时获取可用对话
+  // 对话框打开时获取可用对话，依赖currentConversations来重新过滤
   useEffect(() => {
     loadAvailableConversations()
-  }, [])
+  }, [currentConversations, refreshKey])
 
   return (
     <div className="space-y-4">
@@ -203,7 +204,9 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={loadAvailableConversations}
+          onClick={() => {
+            setRefreshKey(prev => prev + 1)
+          }}
           disabled={isLoading}
           className="w-full"
         >

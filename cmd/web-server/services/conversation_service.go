@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,9 @@ func (s *ConversationService) loadConversations() error {
 	s.conversationsMu.Lock()
 	defer s.conversationsMu.Unlock()
 
+	// 清除现有缓存，重新从文件系统加载
+	s.conversations = make(map[string]*models.Conversation)
+
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -86,7 +90,15 @@ func (s *ConversationService) saveConversation(conv *models.Conversation) error 
 		return fmt.Errorf("failed to marshal conversation: %v", err)
 	}
 
-	filename := filepath.Join(s.conversationsDir, conv.ID+".json")
+	// 使用标题和ID组合作为文件名，如果标题为默认标题则只用ID
+	var filename string
+	if conv.Title != "" && !strings.HasPrefix(conv.Title, "新对话") {
+		safeTitle := sanitizeFilename(conv.Title)
+		filename = filepath.Join(s.conversationsDir, fmt.Sprintf("%s_%s.json", safeTitle, conv.ID))
+	} else {
+		filename = filepath.Join(s.conversationsDir, conv.ID+".json")
+	}
+
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return fmt.Errorf("failed to save conversation file: %v", err)
 	}
@@ -161,6 +173,11 @@ func (s *ConversationService) SaveAssistantMessage(conversationID, message, mode
 
 // GetConversations 获取对话列表
 func (s *ConversationService) GetConversations() []*models.Conversation {
+	// 每次获取对话列表时都重新从文件系统加载，确保数据是最新的
+	if err := s.loadConversations(); err != nil {
+		log.Printf("Warning: Failed to reload conversations: %v", err)
+	}
+
 	s.conversationsMu.RLock()
 	defer s.conversationsMu.RUnlock()
 
@@ -253,20 +270,99 @@ func (s *ConversationService) UpdateConversation(id string, req *models.UpdateCo
 		return nil, fmt.Errorf("conversation not found")
 	}
 
-	// 更新字段
-	if req.Title != "" {
-		conv.Title = req.Title
+	// 检查是否需要重命名文件
+	var needRenameFile bool
+	var oldFilenames []string
+	var newFilename string
+
+	if req.Title != "" && req.Title != conv.Title {
+		// 查找所有相关的对话文件
+		pattern := filepath.Join(s.conversationsDir, fmt.Sprintf("*_%s.json", id))
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			log.Printf("Warning: Failed to search for conversation files: %v", err)
+		} else {
+			// 同时检查原始的 {id}.json 文件
+			originalFile := filepath.Join(s.conversationsDir, id+".json")
+			if _, err := os.Stat(originalFile); err == nil {
+				matches = append(matches, originalFile)
+			}
+			oldFilenames = matches
+		}
+
+		if len(oldFilenames) > 0 {
+			needRenameFile = true
+			// 生成新的文件名，使用对话标题
+			safeTitle := sanitizeFilename(req.Title)
+			newFilename = filepath.Join(s.conversationsDir, fmt.Sprintf("%s_%s.json", safeTitle, id))
+
+			// 更新对话标题
+			conv.Title = req.Title
+		}
 	}
+
 	if req.Messages != nil {
 		conv.Messages = req.Messages
 	}
 	conv.UpdatedAt = time.Now()
 
-	if err := s.saveConversation(conv); err != nil {
-		return nil, fmt.Errorf("failed to save conversation")
+	// 如果需要重命名文件
+	if needRenameFile {
+		// 先保存到新文件
+		data, err := json.MarshalIndent(conv, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal conversation: %v", err)
+		}
+
+		if err := os.WriteFile(newFilename, data, 0644); err != nil {
+			return nil, fmt.Errorf("failed to save new conversation file: %v", err)
+		}
+
+		// 删除所有旧文件
+		for _, oldFilename := range oldFilenames {
+			if oldFilename != newFilename { // 避免删除刚创建的文件
+				if err := os.Remove(oldFilename); err != nil {
+					log.Printf("Warning: Failed to delete old conversation file %s: %v", oldFilename, err)
+				} else {
+					log.Printf("Deleted old conversation file: %s", filepath.Base(oldFilename))
+				}
+			}
+		}
+
+		log.Printf("Renamed conversation to %s, deleted %d old files", filepath.Base(newFilename), len(oldFilenames))
+	} else {
+		// 不需要重命名，直接保存到原文件
+		if err := s.saveConversation(conv); err != nil {
+			return nil, fmt.Errorf("failed to save conversation")
+		}
 	}
 
 	return conv, nil
+}
+
+// sanitizeFilename 清理文件名，移除不安全字符
+func sanitizeFilename(title string) string {
+	// 替换不安全的字符为下划线
+	unsafe := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|", "\n", "\r", "\t"}
+	result := title
+	for _, char := range unsafe {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+
+	// 移除开头和结尾的空格和点
+	result = strings.Trim(result, " .")
+
+	// 如果结果为空，使用默认名称
+	if result == "" {
+		result = "untitled"
+	}
+
+	// 限制长度
+	if len(result) > 50 {
+		result = result[:50]
+	}
+
+	return result
 }
 
 // DeleteConversation 删除对话
@@ -279,10 +375,26 @@ func (s *ConversationService) DeleteConversation(id string) (*models.Conversatio
 		return nil, fmt.Errorf("conversation not found")
 	}
 
-	// 删除文件
-	filename := filepath.Join(s.conversationsDir, id+".json")
-	if err := os.Remove(filename); err != nil {
-		log.Printf("Warning: Failed to delete conversation file %s: %v", filename, err)
+	// 查找并删除所有相关的对话文件
+	pattern := filepath.Join(s.conversationsDir, fmt.Sprintf("*_%s.json", id))
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		log.Printf("Warning: Failed to search for conversation files: %v", err)
+	} else {
+		// 同时检查原始的 {id}.json 文件
+		originalFile := filepath.Join(s.conversationsDir, id+".json")
+		if _, err := os.Stat(originalFile); err == nil {
+			matches = append(matches, originalFile)
+		}
+
+		// 删除所有找到的文件
+		for _, filename := range matches {
+			if err := os.Remove(filename); err != nil {
+				log.Printf("Warning: Failed to delete conversation file %s: %v", filename, err)
+			} else {
+				log.Printf("Deleted conversation file: %s", filepath.Base(filename))
+			}
+		}
 	}
 
 	// 从内存中删除

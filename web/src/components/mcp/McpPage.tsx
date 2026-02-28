@@ -15,7 +15,7 @@ interface McpPageProps {
   onBack: () => void
 }
 
-export function McpPage({ onBack }: McpPageProps) {
+export function McpPage({ onBack: _onBack }: McpPageProps) {
   const [servers, setServers] = useState<McpServer[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)

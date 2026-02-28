@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 
 // 简单的防抖函数实现
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
-  let timeout: NodeJS.Timeout
+  let timeout: ReturnType<typeof setTimeout>
   return ((...args: Parameters<T>) => {
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), wait)
@@ -10,7 +10,7 @@ function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
 }
 import { Conversation, Message, CreateConversationRequest, UpdateConversationRequest } from '../types/conversation'
 import { useApi } from './useApi'
-import { ChatResponse, Thought } from '../types'
+import { ChatResponse } from '../types'
 
 interface UseConversationsProps {
   selectedModel?: string
@@ -22,7 +22,7 @@ interface UseConversationsReturn {
   activeConversation: Conversation | undefined
   isLoading: boolean
   
-  createConversation: () => string
+  createConversation: () => Promise<string>
   selectConversation: (id: string) => Promise<void>
   loadConversation: (id: string) => Promise<void>
   closeConversation: (id: string) => void
@@ -32,7 +32,7 @@ interface UseConversationsReturn {
 }
 
 export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsProps = {}): UseConversationsReturn {
-  const { sendStreamingChatMessage, getConversations, getConversation, createConversation: createConversationApi, updateConversation, deleteConversation: deleteConversationApi } = useApi()
+  const { sendStreamingChatMessage, getConversation, createConversation: createConversationApi, updateConversation, deleteConversation: deleteConversationApi } = useApi()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
@@ -62,41 +62,20 @@ export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsPr
     }
   }, [createConversationApi, selectedModel])
 
-  // 启动时加载历史对话
+  // 启动时不自动创建对话，等待用户操作
   useEffect(() => {
-    const loadConversations = async () => {
+    const initializeApp = async () => {
       try {
-        const result = await getConversations()
-        if (result.success && result.data) {
-          // 转换日期字符串为Date对象
-          const conversationsWithDates = result.data.map(conv => ({
-            ...conv,
-            createdAt: new Date(conv.createdAt),
-            updatedAt: new Date(conv.updatedAt),
-            messages: conv.messages.map(msg => ({
-              ...msg,
-              timestamp: new Date(msg.timestamp)
-            }))
-          }))
-          setConversations(conversationsWithDates)
-          
-          // 如果有对话，选择最新的一个
-          if (conversationsWithDates.length > 0) {
-            setActiveConversationId(conversationsWithDates[0].id)
-          } else {
-            // 如果没有历史对话，创建一个新的
-            await createNewConversation()
-          }
-        }
+        // 不自动创建对话，只设置加载完成
+        setIsLoading(false)
       } catch (error) {
-        console.error('Failed to load conversations:', error)
-      } finally {
+        console.error('Failed to initialize app:', error)
         setIsLoading(false)
       }
     }
 
-    loadConversations()
-  }, [getConversations, createNewConversation])
+    initializeApp()
+  }, [])
 
   // 实时保存对话到后端
   const saveConversationToBackend = useCallback(async (conversationId: string) => {
@@ -229,7 +208,7 @@ export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsPr
         setConversations(prev =>
           prev.map(conv =>
             conv.id === id
-              ? { ...conv, title: newTitle, updatedAt: new Date(result.data.updatedAt) }
+              ? { ...conv, title: newTitle, updatedAt: new Date(result.data?.updatedAt || new Date()) }
               : conv
           )
         )
