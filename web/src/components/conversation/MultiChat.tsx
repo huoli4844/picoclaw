@@ -4,8 +4,9 @@ import { ChatMessage } from '../ChatMessage'
 import { ChatInput } from '../ChatInput'
 import { TypingIndicator } from '../TypingIndicator'
 import { Button } from '../ui/button'
+import { Checkbox } from '../ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog'
-import { History, FolderOpen, Brain } from 'lucide-react'
+import { History, FolderOpen, Brain, Trash2 } from 'lucide-react'
 
 import { Conversation, Message } from '../../types/conversation'
 import { useState, useEffect } from 'react'
@@ -15,6 +16,7 @@ interface MultiChatProps {
   activeConversationId: string
   activeConversation: Conversation | undefined
   isLoading: boolean
+  isSaving: (id: string) => boolean
   
   onConversationCreate: () => void
   onConversationSelect: (id: string) => Promise<void>
@@ -30,6 +32,7 @@ export function MultiChat({
   activeConversationId,
   activeConversation,
   isLoading,
+  isSaving,
   onConversationCreate,
   onConversationSelect,
   onConversationLoad,
@@ -53,6 +56,7 @@ export function MultiChat({
             <ConversationTabs
               conversations={conversations}
               activeConversationId={activeConversationId}
+              isSaving={isSaving}
               onConversationSelect={onConversationSelect}
               onConversationCreate={onConversationCreate}
               onConversationClose={onConversationClose}
@@ -142,6 +146,8 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
   const [availableConversations, setAvailableConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedConversations, setSelectedConversations] = useState<string[]>([])
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
 
   // 获取所有历史对话文件
   const loadAvailableConversations = async () => {
@@ -150,15 +156,14 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
       const response = await fetch('http://localhost:8080/api/conversations')
       const data = await response.json()
       
-      // 过滤出当前不在界面中的对话
-      const currentIds = new Set(currentConversations.map(conv => conv.id))
-      const availableConversations = data.filter((conv: Conversation) => !currentIds.has(conv.id))
-      
-      setAvailableConversations(availableConversations.map((conv: any) => ({
+      // 显示所有历史对话（包括当前已经在界面中的）
+      const allConversations = data.map((conv: any) => ({
         ...conv,
         createdAt: new Date(conv.createdAt),
         updatedAt: new Date(conv.updatedAt)
-      })))
+      }))
+      
+      setAvailableConversations(allConversations)
     } catch (error) {
       console.error('Failed to load available conversations:', error)
     } finally {
@@ -169,12 +174,95 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
   // 对话框打开时获取可用对话，依赖currentConversations来重新过滤
   useEffect(() => {
     loadAvailableConversations()
+    setSelectedConversations([])
   }, [currentConversations, refreshKey])
+
+  // 批量删除对话
+  const handleBatchDelete = async (conversationIds: string[]) => {
+    if (conversationIds.length === 0) return
+    
+    const conversationNames = availableConversations
+      .filter(conv => conversationIds.includes(conv.id))
+      .map(conv => conv.title)
+      .join('、')
+    
+    if (window.confirm(`确定要删除以下 ${conversationIds.length} 个历史对话吗？\n\n${conversationNames}\n\n此操作不可恢复。`)) {
+      let successCount = 0
+      for (const id of conversationIds) {
+        try {
+          const response = await fetch(`http://localhost:8080/api/conversations/${id}`, {
+            method: 'DELETE'
+          })
+          if (response.ok) {
+            successCount++
+          }
+        } catch (error) {
+          console.error('Failed to delete conversation:', error)
+        }
+      }
+      
+      if (successCount > 0) {
+        setSelectedConversations([])
+        await loadAvailableConversations()
+      }
+    }
+  }
+
+  // 切换选择状态
+  const handleConversationSelect = (conversationId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedConversations(prev => [...prev, conversationId])
+    } else {
+      setSelectedConversations(prev => prev.filter(id => id !== conversationId))
+    }
+  }
+
+  // 全选/取消全选
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedConversations(availableConversations.map(conv => conv.id))
+    } else {
+      setSelectedConversations([])
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-muted-foreground">
-        选择要加载的历史对话：
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          历史对话列表：
+        </div>
+        
+        {/* 批量操作控制 */}
+        <div className="flex items-center gap-2">
+          {selectedConversations.length > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">
+                已选择 {selectedConversations.length} 个
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleBatchDelete(selectedConversations)}
+                className="h-7 px-2"
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </>
+          )}
+          
+          <Button
+            variant={isMultiSelectMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setIsMultiSelectMode(!isMultiSelectMode)
+              setSelectedConversations([])
+            }}
+            className="h-7 px-2 text-xs"
+          >
+            {isMultiSelectMode ? '退出批量' : '批量删除'}
+          </Button>
+        </div>
       </div>
       
       {isLoading ? (
@@ -184,20 +272,74 @@ function LoadHistoryDialog({ currentConversations, onLoadConversation }: LoadHis
           没有可加载的历史对话
         </div>
       ) : (
-        <div className="space-y-2 max-h-60 overflow-y-auto">
-          {availableConversations.map((conv) => (
-            <div
-              key={conv.id}
-              className="p-3 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
-              onClick={() => onLoadConversation(conv.id)}
-            >
-              <div className="font-medium text-sm truncate">{conv.title}</div>
-              <div className="text-xs text-muted-foreground">
-                {conv.messages.length} 条消息 • {conv.updatedAt.toLocaleString()}
-              </div>
+        <>
+          {/* 全选行 */}
+          {isMultiSelectMode && availableConversations.length > 0 && (
+            <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-md">
+              <Checkbox
+                checked={selectedConversations.length === availableConversations.length}
+                onCheckedChange={handleSelectAll}
+              />
+              <span className="text-sm font-medium">
+                全选 ({availableConversations.length} 个对话)
+              </span>
             </div>
-          ))}
-        </div>
+          )}
+          
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {availableConversations.map((conv) => (
+              <div
+                key={conv.id}
+                className={`
+                  p-3 border rounded-lg hover:bg-accent cursor-pointer transition-colors
+                  ${selectedConversations.includes(conv.id) ? 'bg-accent/50' : ''}
+                `}
+                onClick={() => {
+                  if (isMultiSelectMode) {
+                    handleConversationSelect(conv.id, !selectedConversations.includes(conv.id))
+                  } else {
+                    onLoadConversation(conv.id)
+                  }
+                }}
+                title={
+                  currentConversations.some(c => c.id === conv.id) 
+                    ? "此对话已在当前界面中" 
+                    : "点击加载此对话"
+                }
+              >
+                <div className="flex items-start gap-3">
+                  {/* 批量选择复选框 */}
+                  {isMultiSelectMode && (
+                    <div className="flex-shrink-0 mt-1">
+                      <Checkbox
+                        checked={selectedConversations.includes(conv.id)}
+                        onCheckedChange={(checked) => handleConversationSelect(conv.id, checked)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{conv.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {conv.messages.length} 条消息 • {conv.updatedAt.toLocaleString()}
+                    </div>
+                    {isMultiSelectMode && selectedConversations.includes(conv.id) && (
+                      <span className="text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded inline-block mt-1">
+                        已选择
+                      </span>
+                    )}
+                    {!isMultiSelectMode && currentConversations.some(c => c.id === conv.id) && (
+                      <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-1.5 py-0.5 rounded inline-block mt-1">
+                        已加载
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
       
       <div className="pt-2 border-t">

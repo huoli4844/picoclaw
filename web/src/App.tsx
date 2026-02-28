@@ -6,6 +6,7 @@ import { SkillsPage } from './components/skills/SkillsPage'
 import { McpPage } from './components/mcp/McpPage'
 import { MultiChat } from './components/conversation/MultiChat'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { ToastContainer } from './components/ui/toast'
 import { useApi } from './hooks/useApi'
 import { useConversations } from './hooks/useConversations'
 import { Model } from './types'
@@ -24,6 +25,7 @@ function App() {
     activeConversationId,
     activeConversation,
     isLoading,
+    isSaving,
     createConversation,
     selectConversation,
     loadConversation,
@@ -148,70 +150,76 @@ function App() {
 
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar
-        currentView={currentView}
-        onViewChange={(view) => {
-          if (view === 'chat') {
-            handleChatClick()
-          } else {
-            setCurrentView(view)
-          }
-        }}
-        isSidebarOpen={isSidebarOpen}
-        onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-      />
+    <ThemeProvider>
+      <div className="flex h-screen overflow-hidden">
+        {/* Sidebar */}
+        <Sidebar
+          currentView={currentView}
+          onViewChange={(view) => {
+            if (view === 'chat') {
+              handleChatClick()
+            } else {
+              setCurrentView(view)
+            }
+          }}
+          isSidebarOpen={isSidebarOpen}
+          onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 h-full">
-        {/* Header */}
-        <div className="flex-shrink-0">
-          <Header
-            selectedModel={selectedModel}
-            models={models}
-            onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-          />
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 min-h-0">
-          {currentView === 'chat' && (
-            <MultiChat
-              conversations={conversations}
-              activeConversationId={activeConversationId}
-              activeConversation={activeConversation}
-              isLoading={isLoading}
-              onConversationCreate={createConversation}
-              onConversationSelect={selectConversation}
-              onConversationLoad={loadConversation}
-              onConversationClose={closeConversation}
-              onConversationDelete={deleteConversation}
-              onConversationRename={renameConversation}
-              onSendMessage={sendMessage}
-            />
-          )}
-          
-          {currentView === 'skills' && (
-            <SkillsPage onBack={() => setCurrentView('chat')} />
-          )}
-          
-          {currentView === 'mcp' && (
-            <McpPage onBack={() => setCurrentView('chat')} />
-          )}
-          
-          {currentView === 'settings' && (
-            <SettingsPage
-              onBack={() => setCurrentView('chat')}
-              models={models}
-              onModelsChange={handleModelsChange}
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-w-0 h-full">
+          {/* Header */}
+          <div className="flex-shrink-0">
+            <Header
               selectedModel={selectedModel}
-              onSelectedModelChange={handleSelectedModelChange}
+              models={models}
+              onSidebarToggle={() => setIsSidebarOpen(!isSidebarOpen)}
             />
-          )}
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 min-h-0">
+            {currentView === 'chat' && (
+              <MultiChat
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                activeConversation={activeConversation}
+                isLoading={isLoading}
+                isSaving={isSaving}
+                onConversationCreate={createConversation}
+                onConversationSelect={selectConversation}
+                onConversationLoad={loadConversation}
+                onConversationClose={closeConversation}
+                onConversationDelete={deleteConversation}
+                onConversationRename={renameConversation}
+                onSendMessage={sendMessage}
+              />
+            )}
+            
+            {currentView === 'skills' && (
+              <SkillsPage onBack={() => setCurrentView('chat')} />
+            )}
+            
+            {currentView === 'mcp' && (
+              <McpPage onBack={() => setCurrentView('chat')} />
+            )}
+            
+            {currentView === 'settings' && (
+              <SettingsPage
+                onBack={() => setCurrentView('chat')}
+                models={models}
+                onModelsChange={handleModelsChange}
+                selectedModel={selectedModel}
+                onSelectedModelChange={handleSelectedModelChange}
+              />
+            )}
+          </div>
         </div>
+
+        {/* Toast Container */}
+        <ToastContainer />
       </div>
-    </div>
+    </ThemeProvider>
   )
 }
 

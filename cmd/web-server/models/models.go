@@ -52,7 +52,7 @@ type Conversation struct {
 
 // CreateConversationRequest 创建对话请求
 type CreateConversationRequest struct {
-	Title string `json:"title"`
+	Title string `json:"title,omitempty"`
 	Model string `json:"model"`
 }
 

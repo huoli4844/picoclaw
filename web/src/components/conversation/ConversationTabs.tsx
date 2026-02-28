@@ -3,11 +3,12 @@ import { Conversation } from '../../types/conversation'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog'
 import { Input } from '../ui/input'
-import { X, Plus, Edit2, Check, MessageSquare } from 'lucide-react'
+import { X, Plus, Edit2, Check, MessageSquare, Loader2 } from 'lucide-react'
 
 interface ConversationTabsProps {
   conversations: Conversation[]
   activeConversationId: string
+  isSaving: (id: string) => boolean
   onConversationSelect: (id: string) => void
   onConversationCreate: () => void
   onConversationClose: (id: string) => void
@@ -18,6 +19,7 @@ interface ConversationTabsProps {
 export function ConversationTabs({
   conversations,
   activeConversationId,
+  isSaving,
   onConversationSelect,
   onConversationCreate,
   onConversationClose,
@@ -91,7 +93,12 @@ export function ConversationTabs({
                   }}
                   className="flex-1 text-left truncate text-sm font-medium"
                 >
-                  {conversation.title}
+                  <span className="flex items-center gap-2">
+                    {conversation.title}
+                    {isSaving(conversation.id) && (
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                    )}
+                  </span>
                 </button>
                 
                 {/* 编辑按钮 */}

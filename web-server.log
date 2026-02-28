@@ -1,0 +1,22 @@
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] agent: Created implicit main agent (no agents.list configured)
+2026/02/28 14:38:14 Using configured workspace: /Users/huoli4844/.picoclaw/workspace
+2026/02/28 14:38:14 Chat storage directory: /Users/huoli4844/.picoclaw/workspace/chat
+2026/02/28 14:38:14 Chat storage directory created/verified successfully
+2026/02/28 14:38:14 Loaded 1 conversations
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Initializing channel manager
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [DEBUG] channels: Attempting to initialize InternalIM channel
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: InternalIM channel enabled successfully
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Channel initialization completed {enabled_channels=1}
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Starting all channels
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Starting channel {channel=internal-im}
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] internal-im: Starting Internal IM channel
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] internal-im: Subscribed to topic {topic=picoclaw.im}
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] internal-im: Internal IM channel started successfully {topic=picoclaw.im, url=nats://171.221.201.55:24222}
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: All channels started
+2026/02/28 14:38:14 ✅ Channels manager started successfully
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Outbound media dispatcher started
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] internal-im: Starting outbound message listener
+2026/02/28 14:38:14 [2026-02-28T06:38:14Z] [INFO] channels: Outbound dispatcher started
+PicoClaw Web Server starting on port 8080
+Frontend: http://localhost:8080
+API: http://localhost:8080/api

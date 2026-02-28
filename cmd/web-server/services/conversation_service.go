@@ -85,6 +85,10 @@ func (s *ConversationService) loadConversations() error {
 
 // saveConversation 保存对话
 func (s *ConversationService) saveConversation(conv *models.Conversation) error {
+	if conv == nil {
+		return fmt.Errorf("conversation is nil")
+	}
+
 	data, err := json.MarshalIndent(conv, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal conversation: %v", err)
@@ -99,10 +103,21 @@ func (s *ConversationService) saveConversation(conv *models.Conversation) error 
 		filename = filepath.Join(s.conversationsDir, conv.ID+".json")
 	}
 
-	if err := os.WriteFile(filename, data, 0644); err != nil {
-		return fmt.Errorf("failed to save conversation file: %v", err)
+	// 确保目录存在
+	if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+		return fmt.Errorf("failed to create conversation directory: %v", err)
 	}
 
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("failed to save conversation file %s: %v", filename, err)
+	}
+
+	// 更新内存中的对话
+	s.conversationsMu.Lock()
+	s.conversations[conv.ID] = conv
+	s.conversationsMu.Unlock()
+
+	log.Printf("Successfully saved conversation %s to %s", conv.ID, filepath.Base(filename))
 	return nil
 }
 
@@ -236,7 +251,7 @@ func (s *ConversationService) CreateConversation(title, model string) (*models.C
 
 	// 如果没有提供标题，使用默认标题
 	if title == "" {
-		title = "新对话 " + time.Now().Format("2006-01-02 15:04:05")
+		title = "新对话"
 	}
 
 	conv := &models.Conversation{
@@ -248,27 +263,36 @@ func (s *ConversationService) CreateConversation(title, model string) (*models.C
 		Model:     model,
 	}
 
-	// 保存到内存和文件
+	// 先保存到文件
+	if err := s.saveConversation(conv); err != nil {
+		return nil, fmt.Errorf("failed to save new conversation: %v", err)
+	}
+
+	// 文件保存成功后，添加到内存
 	s.conversationsMu.Lock()
 	s.conversations[id] = conv
 	s.conversationsMu.Unlock()
 
-	if err := s.saveConversation(conv); err != nil {
-		return nil, fmt.Errorf("failed to save conversation")
-	}
-
+	log.Printf("Successfully created new conversation %s: title=%s, model=%s", id, title, model)
 	return conv, nil
 }
 
 // UpdateConversation 更新对话
 func (s *ConversationService) UpdateConversation(id string, req *models.UpdateConversationRequest) (*models.Conversation, error) {
+	if req == nil {
+		return nil, fmt.Errorf("update request is nil")
+	}
+
 	s.conversationsMu.Lock()
 	defer s.conversationsMu.Unlock()
 
 	conv, exists := s.conversations[id]
 	if !exists {
-		return nil, fmt.Errorf("conversation not found")
+		return nil, fmt.Errorf("conversation with ID %s not found", id)
 	}
+
+	// 备份原始状态，用于回滚
+	originalConv := *conv
 
 	// 检查是否需要重命名文件
 	var needRenameFile bool
@@ -306,37 +330,49 @@ func (s *ConversationService) UpdateConversation(id string, req *models.UpdateCo
 	}
 	conv.UpdatedAt = time.Now()
 
-	// 如果需要重命名文件
+	// 尝试保存对话
+	var saveErr error
 	if needRenameFile {
-		// 先保存到新文件
+		// 需要重命名文件的情况
 		data, err := json.MarshalIndent(conv, "", "  ")
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal conversation: %v", err)
-		}
+			saveErr = fmt.Errorf("failed to marshal conversation: %v", err)
+		} else {
+			// 先保存到新文件
+			if err := os.WriteFile(newFilename, data, 0644); err != nil {
+				saveErr = fmt.Errorf("failed to save new conversation file %s: %v", newFilename, err)
+			} else {
+				// 新文件保存成功，删除旧文件
+				var deletedCount int
+				for _, oldFilename := range oldFilenames {
+					if oldFilename != newFilename { // 避免删除刚创建的文件
+						if err := os.Remove(oldFilename); err != nil {
+							log.Printf("Warning: Failed to delete old conversation file %s: %v", oldFilename, err)
+						} else {
+							log.Printf("Deleted old conversation file: %s", filepath.Base(oldFilename))
+							deletedCount++
+						}
+					}
+				}
 
-		if err := os.WriteFile(newFilename, data, 0644); err != nil {
-			return nil, fmt.Errorf("failed to save new conversation file: %v", err)
-		}
-
-		// 删除所有旧文件
-		for _, oldFilename := range oldFilenames {
-			if oldFilename != newFilename { // 避免删除刚创建的文件
-				if err := os.Remove(oldFilename); err != nil {
-					log.Printf("Warning: Failed to delete old conversation file %s: %v", oldFilename, err)
-				} else {
-					log.Printf("Deleted old conversation file: %s", filepath.Base(oldFilename))
+				if deletedCount > 0 {
+					log.Printf("Successfully renamed conversation to %s and deleted %d old files", filepath.Base(newFilename), deletedCount)
 				}
 			}
 		}
-
-		log.Printf("Renamed conversation to %s, deleted %d old files", filepath.Base(newFilename), len(oldFilenames))
 	} else {
-		// 不需要重命名，直接保存到原文件
-		if err := s.saveConversation(conv); err != nil {
-			return nil, fmt.Errorf("failed to save conversation")
-		}
+		// 不需要重命名，直接保存
+		saveErr = s.saveConversation(conv)
 	}
 
+	// 如果保存失败，恢复原始状态
+	if saveErr != nil {
+		log.Printf("Failed to save conversation %s: %v", id, saveErr)
+		*conv = originalConv // 恢复原始状态
+		return nil, saveErr
+	}
+
+	log.Printf("Successfully updated conversation %s: title=%s, messages=%d", id, conv.Title, len(conv.Messages))
 	return conv, nil
 }
 
