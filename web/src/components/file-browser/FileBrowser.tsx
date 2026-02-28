@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FileBrowserProps } from './types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Folder, 
   File, 
@@ -29,6 +30,8 @@ export function FileBrowser({
   onDeleteFile
 }: FileBrowserProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
 
   // 获取文件图标
   const getFileIcon = (fileName: string, isDir: boolean) => {
@@ -115,7 +118,48 @@ export function FileBrowser({
       const success = await onDeleteFile(file.path, file.isDir)
       if (success) {
         setSelectedFile(null)
+        setSelectedFiles([])
       }
+    }
+  }
+
+  const handleBatchDelete = async (filesToDelete: any[], event: React.MouseEvent) => {
+    event.stopPropagation()
+    
+    if (filesToDelete.length === 0) return
+    
+    const fileNames = filesToDelete.map(f => f.name).join('、')
+    if (window.confirm(`确定要删除以下 ${filesToDelete.length} 个文件/目录吗？\n\n${fileNames}\n\n此操作不可恢复。`)) {
+      let successCount = 0
+      for (const file of filesToDelete) {
+        const success = await onDeleteFile(file.path, file.isDir)
+        if (success) {
+          successCount++
+        }
+      }
+      
+      if (successCount === filesToDelete.length) {
+        setSelectedFiles([])
+      }
+    }
+  }
+
+  const handleFileSelect = (file: any, checked: boolean, event: React.MouseEvent) => {
+    event.stopPropagation()
+    
+    if (checked) {
+      setSelectedFiles(prev => [...prev, file.name])
+    } else {
+      setSelectedFiles(prev => prev.filter(name => name !== file.name))
+    }
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // 只选择JSON文件（对话文件）
+      setSelectedFiles(files.filter(f => !f.isDir && f.name.endsWith('.json')).map(f => f.name))
+    } else {
+      setSelectedFiles([])
     }
   }
 
@@ -173,6 +217,44 @@ export function FileBrowser({
             {currentPath.replace(/^.*\.picoclaw\//, '') || '.picoclaw'}
           </span>
         </div>
+
+        {/* 批量操作控制 */}
+        <div className="flex items-center gap-2">
+          {selectedFiles.length > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">
+                已选择 {selectedFiles.length} 个文件
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={(e) => handleBatchDelete(
+                  files.filter(f => selectedFiles.includes(f.name)), 
+                  e
+                )}
+                className="h-8 px-2"
+                title={`批量删除 ${selectedFiles.length} 个文件`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </>
+          )}
+          
+          {/* 只在chat目录显示批量选择，因为对话文件在这里 */}
+          {currentPath.includes('chat') && (
+            <Button
+              variant={isMultiSelectMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setIsMultiSelectMode(!isMultiSelectMode)
+                setSelectedFiles([])
+              }}
+              className="h-8 px-2"
+            >
+              {isMultiSelectMode ? '退出批量' : '批量删除'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 文件列表 */}
@@ -185,6 +267,19 @@ export function FileBrowser({
             </div>
           ) : (
             <div className="space-y-1">
+              {/* 全选行 - 只在chat目录下对JSON文件显示 */}
+              {isMultiSelectMode && files.some(f => !f.isDir && f.name.endsWith('.json')) && currentPath.includes('chat') && (
+                <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-md">
+                  <Checkbox
+                    checked={selectedFiles.length === files.filter(f => !f.isDir && f.name.endsWith('.json')).length}
+                    onCheckedChange={handleSelectAll}
+                  />
+                  <span className="text-sm font-medium">
+                    全选 ({files.filter(f => !f.isDir && f.name.endsWith('.json')).length} 个对话文件)
+                  </span>
+                </div>
+              )}
+              
               {sortedFiles.map((file, index) => (
                 <div
                   key={index}
@@ -194,6 +289,17 @@ export function FileBrowser({
                   `}
                   onClick={() => handleFileClick(file)}
                 >
+                  {/* 批量选择复选框 - 只在chat目录下对JSON文件显示 */}
+                  {isMultiSelectMode && !file.isDir && file.name.endsWith('.json') && currentPath.includes('chat') && (
+                    <div className="flex-shrink-0">
+                      <Checkbox
+                        checked={selectedFiles.includes(file.name)}
+                        onCheckedChange={(checked) => handleFileSelect(file, checked, { stopPropagation: () => {} } as React.MouseEvent)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
+
                   {/* 文件图标 */}
                   <div className="flex-shrink-0">
                     {getFileIcon(file.name, file.isDir)}
@@ -207,6 +313,11 @@ export function FileBrowser({
                       </span>
                       {file.isDir && (
                         <span className="text-xs text-muted-foreground">目录</span>
+                      )}
+                      {isMultiSelectMode && selectedFiles.includes(file.name) && (
+                        <span className="text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
+                          已选择
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -222,7 +333,7 @@ export function FileBrowser({
 
                   {/* 操作按钮 */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {!file.isDir && (
+                    {!file.isDir && !isMultiSelectMode && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -236,15 +347,17 @@ export function FileBrowser({
                         <Eye className="w-3 h-3" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                      onClick={(e) => handleDelete(file, e)}
-                      title={`删除${file.isDir ? '目录' : '文件'}`}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    {!isMultiSelectMode && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                        onClick={(e) => handleDelete(file, e)}
+                        title={`删除${file.isDir ? '目录' : '文件'}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
