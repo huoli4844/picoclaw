@@ -5,7 +5,7 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go generate ./cmd/picoclaw
+    - go generate ./cmd/picoclaw/...
 
 builds:
   - id: picoclaw
@@ -31,7 +31,7 @@ builds:
       - loong64
       - arm
     goarm:
-      - "7"             
+      - "7"
     main: ./cmd/picoclaw
     ignore:
       - goos: windows
@@ -39,7 +39,9 @@ builds:
 
 dockers_v2:
   - id: picoclaw
-    dockerfile: Dockerfile.goreleaser
+    dockerfile: docker/Dockerfile.goreleaser
+    extra_files:
+      - docker/entrypoint.sh
     ids:
       - picoclaw
     images:
