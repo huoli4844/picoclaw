@@ -129,9 +129,12 @@ func NewWeComAppChannel(cfg config.WeComAppConfig, messageBus *bus.MessageBus) (
 		channels.WithReasoningChannelID(cfg.ReasoningChannelID),
 	)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	return &WeComAppChannel{
 		BaseChannel:   base,
 		config:        cfg,
+		ctx:           ctx,
+		cancel:        cancel,
 		processedMsgs: make(map[string]bool),
 	}, nil
 }
@@ -145,6 +148,10 @@ func (c *WeComAppChannel) Name() string {
 func (c *WeComAppChannel) Start(ctx context.Context) error {
 	logger.InfoC("wecom_app", "Starting WeCom App channel...")
 
+	// Cancel the context created in the constructor to avoid a resource leak.
+	if c.cancel != nil {
+		c.cancel()
+	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
 	// Get initial access token
@@ -567,8 +574,9 @@ func (c *WeComAppChannel) handleMessageCallback(ctx context.Context, w http.Resp
 		return
 	}
 
-	// Process the message with context
-	go c.processMessage(ctx, msg)
+	// Process the message with the channel's long-lived context (not the HTTP
+	// request context, which is canceled as soon as we return the response).
+	go c.processMessage(c.ctx, msg)
 
 	// Return success response immediately
 	// WeCom App requires response within configured timeout (default 5 seconds)
@@ -597,14 +605,14 @@ func (c *WeComAppChannel) processMessage(ctx context.Context, msg WeComXMLMessag
 		return
 	}
 	c.processedMsgs[msgID] = true
-	c.msgMu.Unlock()
-
-	// Clean up old messages periodically (keep last 1000)
+	// Clean up old messages while still holding the lock to avoid a data race
+	// on len(). Reset the map but re-insert the current msgID so it remains
+	// deduplicated.
 	if len(c.processedMsgs) > 1000 {
-		c.msgMu.Lock()
 		c.processedMsgs = make(map[string]bool)
-		c.msgMu.Unlock()
+		c.processedMsgs[msgID] = true
 	}
+	c.msgMu.Unlock()
 
 	senderID := msg.FromUserName
 	chatID := senderID // WeCom App uses user ID as chat ID for direct messages

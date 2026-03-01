@@ -42,10 +42,11 @@ tasks/
 .vscode/
 .idea/
 
-/web/.vite
-
 # Added by goreleaser init:
 dist/
 /web/node_modules/
 /web-server
 /web/.vite/
+
+# Windows Application Icon/Resource
+*.syso
