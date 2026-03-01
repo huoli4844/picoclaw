@@ -13,9 +13,10 @@ interface UseConversationsReturn {
   activeConversation: Conversation | undefined
   isLoading: boolean
   
-  createConversation: () => Promise<string>
+  createConversation: (title?: string) => Promise<string>
   selectConversation: (id: string) => Promise<void>
   loadConversation: (id: string) => Promise<void>
+  loadHistoryConversations: () => Promise<Conversation[]>
   closeConversation: (id: string) => void
   deleteConversation: (id: string) => void
   renameConversation: (id: string, newTitle: string) => void
@@ -23,16 +24,17 @@ interface UseConversationsReturn {
 }
 
 export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsProps = {}): UseConversationsReturn {
-  const { sendStreamingChatMessage, getConversation, createConversation: createConversationApi, updateConversation, deleteConversation: deleteConversationApi } = useApi()
+  const { sendStreamingChatMessage, getConversation, getConversations, createConversation: createConversationApi, updateConversation, deleteConversation: deleteConversationApi } = useApi()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
   // 创建新对话的后端版本
-  const createNewConversation = useCallback(async (): Promise<string> => {
+  const createNewConversation = useCallback(async (title?: string): Promise<string> => {
     try {
       const request: CreateConversationRequest = {
-        model: selectedModel
+        model: selectedModel,
+        title: title || '新对话'
       }
       const result = await createConversationApi(request)
       if (result.success && result.data) {
@@ -139,8 +141,8 @@ export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsPr
     }
   }, [conversations, saveConversationToBackend])
 
-  const createConversation = useCallback(async (): Promise<string> => {
-    return await createNewConversation()
+  const createConversation = useCallback(async (title?: string): Promise<string> => {
+    return await createNewConversation(title)
   }, [createNewConversation])
 
   const loadConversation = useCallback(async (id: string) => {
@@ -177,6 +179,29 @@ export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsPr
       console.error('Failed to load conversation:', error)
     }
   }, [getConversation])
+
+  const loadHistoryConversations = useCallback(async (): Promise<Conversation[]> => {
+    try {
+      const result = await getConversations()
+      if (result.success && result.data) {
+        const historyConvs = result.data.map(conv => ({
+          ...conv,
+          createdAt: new Date(conv.createdAt),
+          updatedAt: new Date(conv.updatedAt),
+          messages: conv.messages.map(msg => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
+        }))
+        return historyConvs
+      } else {
+        throw new Error(result.error || 'Failed to load history conversations')
+      }
+    } catch (error) {
+      console.error('Failed to load history conversations:', error)
+      return []
+    }
+  }, [getConversations])
 
   const selectConversation = useCallback(async (id: string) => {
     // 首先切换到选中的对话
@@ -491,6 +516,7 @@ export function useConversations({ selectedModel = 'gpt-4' }: UseConversationsPr
     createConversation,
     selectConversation,
     loadConversation,
+    loadHistoryConversations,
     closeConversation,
     deleteConversation,
     renameConversation,

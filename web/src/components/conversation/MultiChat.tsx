@@ -16,7 +16,7 @@ interface MultiChatProps {
   activeConversation: Conversation | undefined
   isLoading: boolean
   
-  onConversationCreate: () => void
+  onConversationCreate: (title?: string) => void
   onConversationSelect: (id: string) => Promise<void>
   onConversationLoad: (id: string) => Promise<void>
   onConversationClose: (id: string) => void
@@ -58,6 +58,7 @@ export function MultiChat({
               onConversationClose={onConversationClose}
               onConversationDelete={onConversationDelete}
               onConversationRename={onConversationRename}
+              onLoadConversation={onConversationLoad}
             />
           </div>
           
