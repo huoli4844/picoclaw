@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -78,13 +79,28 @@ func (h *ChatHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	ctx := context.Background()
-	sessionKey := fmt.Sprintf("web:%d", time.Now().Unix())
+	// 如果提供了 ConversationID，使用它作为 sessionKey；否则创建新对话
+	var sessionKey string
+	var conversationID string
 
-	// 如果提供了对话ID，保存用户消息到历史记录
 	if req.ConversationID != "" {
-		h.conversationSvc.SaveUserMessage(req.ConversationID, req.Message, req.Model)
+		// 使用已有的对话 ID
+		conversationID = req.ConversationID
+		sessionKey = "web:" + conversationID
+	} else {
+		// 创建新对话
+		newConv, err := h.conversationSvc.CreateConversation("", req.Model)
+		if err != nil {
+			http.Error(w, "Failed to create conversation", http.StatusInternalServerError)
+			return
+		}
+		conversationID = newConv.ID
+		sessionKey = "web:" + conversationID
+		log.Printf("Created new conversation: %s", conversationID)
 	}
+
+	// 保存用户消息到历史记录
+	h.conversationSvc.SaveUserMessage(conversationID, req.Message, req.Model)
 
 	// 创建思考过程收集器
 	h.muThoughts.Lock()
@@ -133,6 +149,7 @@ func (h *ChatHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request
 	collector.AddThought("thinking", "🧠 AI 系统初始化完成，开始智能分析...")
 	collector.AddThought("thinking", "📝 准备调用 AgentLoop 处理用户请求...")
 
+	ctx := context.Background()
 	startTime := time.Now()
 
 	// 使用自定义的处理函数来收集思考过程
@@ -142,7 +159,7 @@ func (h *ChatHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		collector.AddThought("thinking", "❌ 处理消息时出错: "+err.Error())
 		// 发送错误完成消息
-		utils.SendSSEComplete(w, flusher, "", req.Model, err.Error(), req.ConversationID, collector.GetThoughts())
+		utils.SendSSEComplete(w, flusher, "", req.Model, err.Error(), conversationID, collector.GetThoughts())
 		return
 	}
 
@@ -150,12 +167,39 @@ func (h *ChatHandler) handleStreamingChat(w http.ResponseWriter, r *http.Request
 	collector.AddThoughtWithDetails("tool_result", "✅ AI 完成分析，生成回复内容", "agent_reasoning", "", "", duration-500, 0)
 	collector.AddThought("thinking", "✅ 消息处理完成，耗时: "+fmt.Sprintf("%dms", duration))
 
+	// 保存助手消息到历史记录
+	h.conversationSvc.SaveAssistantMessage(conversationID, response, req.Model, collector.GetThoughts())
+
 	// 发送最终完成消息
-	utils.SendSSEComplete(w, flusher, response, req.Model, "", req.ConversationID, collector.GetThoughts())
+	utils.SendSSEComplete(w, flusher, response, req.Model, "", conversationID, collector.GetThoughts())
 }
 
 // handleNonStreamingChat 处理非流式聊天
 func (h *ChatHandler) handleNonStreamingChat(w http.ResponseWriter, r *http.Request, req models.ChatRequest) {
+	// 如果提供了 ConversationID，使用它作为 sessionKey；否则创建新对话
+	var sessionKey string
+	var conversationID string
+
+	if req.ConversationID != "" {
+		// 使用已有的对话 ID
+		conversationID = req.ConversationID
+		sessionKey = "web:" + conversationID
+	} else {
+		// 创建新对话
+		newConv, err := h.conversationSvc.CreateConversation("", req.Model)
+		if err != nil {
+			log.Printf("Failed to create conversation: %v", err)
+			http.Error(w, "Failed to create conversation", http.StatusInternalServerError)
+			return
+		}
+		conversationID = newConv.ID
+		sessionKey = "web:" + conversationID
+		log.Printf("Created new conversation: %s", conversationID)
+	}
+
+	// 保存用户消息到历史记录
+	h.conversationSvc.SaveUserMessage(conversationID, req.Message, req.Model)
+
 	// 创建简单的思考过程记录
 	thoughts := []models.Thought{
 		{
@@ -179,7 +223,6 @@ func (h *ChatHandler) handleNonStreamingChat(w http.ResponseWriter, r *http.Requ
 
 	// Process the message
 	ctx := context.Background()
-	sessionKey := fmt.Sprintf("web:%d", time.Now().Unix())
 
 	startTime := time.Now()
 	response, err := h.agentLoop.ProcessDirect(ctx, req.Message, sessionKey)
@@ -216,11 +259,15 @@ func (h *ChatHandler) handleNonStreamingChat(w http.ResponseWriter, r *http.Requ
 		},
 	)
 
+	// 保存助手消息到历史记录
+	h.conversationSvc.SaveAssistantMessage(conversationID, response, req.Model, thoughts)
+
 	chatResponse := models.ChatResponse{
-		Message:   response,
-		Model:     req.Model,
-		Timestamp: time.Now(),
-		Thoughts:  thoughts,
+		Message:        response,
+		Model:          req.Model,
+		ConversationID: conversationID,
+		Timestamp:      time.Now(),
+		Thoughts:       thoughts,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -12,10 +12,11 @@ type ChatRequest struct {
 
 // ChatResponse 聊天响应
 type ChatResponse struct {
-	Message   string    `json:"message"`
-	Model     string    `json:"model"`
-	Timestamp time.Time `json:"timestamp"`
-	Thoughts  []Thought `json:"thoughts,omitempty"`
+	Message        string    `json:"message"`
+	Model          string    `json:"model"`
+	ConversationID string    `json:"conversationId,omitempty"`
+	Timestamp      time.Time `json:"timestamp"`
+	Thoughts       []Thought `json:"thoughts,omitempty"`
 }
 
 // Thought AI思考过程
